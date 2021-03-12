@@ -1,0 +1,15 @@
+[package]
+name = "chalkboard"
+version = "0.1.0"
+authors = ["not_a_seagull <jtnunley01@gmail.com>"]
+edition = "2018"
+
+[target.'cfg(unix)'.dependencies]
+breadx = { path="../breadx", optional = true }
+
+# general dependencies
+[dependencies]
+ordered-float = "2.1"
+
+[features]
+default = ["breadx"]
