@@ -9,4 +9,6 @@ pub mod geometry;
 pub mod path;
 pub mod surface;
 
+pub(crate) mod util;
+
 pub use error::*;

@@ -37,8 +37,8 @@ impl Path {
     /// Closes this path with an additional straight line.
     #[inline]
     pub fn close(&mut self) {
-        let first = self.segments().first().expect("No segments").clone();
-        let last = self.segments().last_mut().expect("No segments");
+        let first = self.segments.first().expect("No segments").clone();
+        let last = self.segments.last_mut().expect("No segments");
         if first.x != last.x || first.y != last.y {
             last.ty = PathSegmentType::StraightLine;
             let new_seg = PathSegment {
@@ -129,7 +129,7 @@ impl Path {
 
                 let lastpath = self.lastpath.take();
                 self.lastpath = Some(cur);
-                match lastpath.ty {
+                match lastpath.map(|l| l.ty) {
                     Some(PathSegmentType::StraightLine) | None => (),
                     Some(PathSegmentType::Close) => return None,
                     Some(PathSegmentType::BezierCurve {
@@ -139,14 +139,13 @@ impl Path {
                         cty2,
                     }) => {
                         let bc = BezierCurve {
-                            x1: lastpath.x,
-                            y1: lastpath.y,
-                            ctx1,
-                            cty1,
-                            ctx2,
-                            cty2,
-                            x2: cur.x,
-                            y2: cur.y,
+                            start: Point {
+                                x: lastpath.unwrap().x,
+                                y: lastpath.unwrap().y,
+                            },
+                            control1: Point { x: ctx1, y: cty1 },
+                            control2: Point { x: ctx2, y: cty2 },
+                            end: Point { x: cur.x, y: cur.y },
                         };
                         let mut bezierpts: Vec<Point> = bc.into_points().collect();
                         let p = bezierpts.remove(0);

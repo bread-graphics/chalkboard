@@ -9,7 +9,9 @@ breadx = { path="../breadx", optional = true }
 
 # general dependencies
 [dependencies]
+futures-lite = { version = "1.11", optional = true }
 ordered-float = "2.1"
 
 [features]
 default = ["breadx"]
+async = ["futures-lite", "breadx/async"]

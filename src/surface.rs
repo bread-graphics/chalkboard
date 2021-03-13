@@ -2,10 +2,18 @@
 
 use crate::{
     color::Color,
-    geometry::{Angle, BezierCurve, GeometricArc, Line, Rectangle},
+    geometry::{Angle, BezierCurve, GeometricArc, Line, Point, Rectangle},
     path::{Path, PathSegment, PathSegmentType},
 };
 use std::{array::IntoIter as ArrayIter, iter};
+
+#[cfg(feature = "async")]
+use crate::util::GenericResult;
+#[cfg(feature = "async")]
+use futures_lite::{
+    future::FutureExt,
+    stream::{self, StreamExt},
+};
 
 /// A surface which drawing commands can be applied to.
 pub trait Surface {
@@ -105,7 +113,8 @@ pub trait Surface {
             start,
             end,
         }
-        .into_lines();
+        .into_lines()
+        .collect();
         self.draw_lines(&lines)
     }
 
@@ -123,7 +132,7 @@ pub trait Surface {
     /// Draw an ellipse.
     #[inline]
     fn draw_ellipse(&mut self, x1: i32, y1: i32, x2: i32, y2: i32) -> crate::Result {
-        self.draw_arc(x1, y1, x2, y1, Angle::ZERO, Angle::FULL_CIRCLE)
+        self.draw_arc(x1, y1, x2, y2, Angle::ZERO, Angle::FULL_CIRCLE)
     }
 
     /// Draw several ellipses.
@@ -171,7 +180,7 @@ pub trait Surface {
 
     /// Fill in several rectangles.
     #[inline]
-    fn fill_rectangles(&mut self, rects: &[Rect]) -> crate::Result {
+    fn fill_rectangles(&mut self, rects: &[Rectangle]) -> crate::Result {
         rects
             .iter()
             .copied()
@@ -243,5 +252,340 @@ pub trait Surface {
             })
             .collect();
         self.fill_arcs(&arcs)
+    }
+}
+
+/// A surface which drawing commands can be applied to, in a non-blocking way.
+#[cfg(feature = "async")]
+pub trait AsyncSurface: Send {
+    /// Set the color used to draw lines.
+    fn set_stroke_color_async<'future>(&'future mut self, color: Color) -> GenericResult<'future>;
+    /// Set the color used to fill shapes.
+    fn set_fill_color_async<'future>(&'future mut self, color: Color) -> GenericResult<'future>;
+    /// Set the width used to draw lines.
+    fn set_line_width_async<'future>(&'future mut self, width: usize) -> GenericResult<'future>;
+
+    /// Flush all commands passed to this surface to its target.
+    fn flush_async<'future>(&'future mut self) -> GenericResult<'future>;
+
+    /// Draw a single line.
+    fn draw_line_async<'future>(
+        &'future mut self,
+        x1: i32,
+        y1: i32,
+        x2: i32,
+        y2: i32,
+    ) -> GenericResult<'future>;
+    /// Draw several lines. In many cases this is more efficient than drawing a single line in a loop.
+    #[inline]
+    fn draw_lines_async<'future, 'a, 'b>(&'a mut self, lines: &'b [Line]) -> GenericResult<'future>
+    where
+        'a: 'future,
+        'b: 'future,
+    {
+        Box::pin(async move {
+            for line in lines {
+                self.draw_line_async(line.x1, line.y1, line.x2, line.y2)
+                    .await?;
+            }
+            Ok(())
+        })
+    }
+
+    /// Draw a path.
+    #[inline]
+    fn draw_path_async<'future>(&'future mut self, path: Path) -> GenericResult<'future> {
+        let lines = path.into_lines();
+        Box::pin(async move { self.draw_lines_async(&lines).await })
+    }
+
+    /// Draw a bezier curve.
+    #[inline]
+    fn draw_bezier_curve_async<'future>(
+        &'future mut self,
+        curve: BezierCurve,
+    ) -> GenericResult<'future> {
+        let lines: Vec<Line> = curve.into_lines().collect();
+        Box::pin(async move { self.draw_lines_async(&lines).await })
+    }
+
+    /// Draw several bezier curves. In many cases this is more efficient than drawing a single curve in a loop.
+    #[inline]
+    fn draw_bezier_curves_async<'future>(
+        &'future mut self,
+        curves: &[BezierCurve],
+    ) -> GenericResult<'future> {
+        let lines: Vec<Line> = curves
+            .iter()
+            .copied()
+            .flat_map(|curve| curve.into_lines())
+            .collect();
+        Box::pin(async move { self.draw_lines_async(&lines).await })
+    }
+
+    /// Draw a rectangle.
+    #[inline]
+    fn draw_rectangle_async<'future>(
+        &'future mut self,
+        x1: i32,
+        y1: i32,
+        x2: i32,
+        y2: i32,
+    ) -> GenericResult<'future> {
+        let lines: [Line; 4] = [
+            Line { x1, y1, x2, y2: y1 },
+            Line { x1: x2, y1, x2, y2 },
+            Line { x1, y1: y2, x2, y2 },
+            Line { x1, y1, x2: x1, y2 },
+        ];
+
+        Box::pin(async move { self.draw_lines_async(&lines).await })
+    }
+
+    /// Draw several rectangles. In many cases this is more efficient than drawing a single rectangle in a loop.
+    #[inline]
+    fn draw_rectangles_async<'future, 'a, 'b>(
+        &'a mut self,
+        rects: &'b [Rectangle],
+    ) -> GenericResult<'future>
+    where
+        'a: 'future,
+        'b: 'future,
+    {
+        let lines: Vec<Line> = rects
+            .iter()
+            .copied()
+            .flat_map(|Rectangle { x1, y1, x2, y2 }| {
+                ArrayIter::new([
+                    Line { x1, y1, x2, y2: y1 },
+                    Line { x1: x2, y1, x2, y2 },
+                    Line { x1, y1: y2, x2, y2 },
+                    Line { x1, y1, x2: x1, y2 },
+                ])
+            })
+            .collect();
+        Box::pin(async move { self.draw_lines_async(&lines).await })
+    }
+
+    /// Draw an arc.
+    #[inline]
+    fn draw_arc_async<'future>(
+        &'future mut self,
+        x1: i32,
+        y1: i32,
+        x2: i32,
+        y2: i32,
+        start: Angle,
+        end: Angle,
+    ) -> GenericResult<'future> {
+        let lines: Vec<Line> = GeometricArc {
+            x1,
+            y1,
+            x2,
+            y2,
+            start,
+            end,
+        }
+        .into_lines()
+        .collect();
+        Box::pin(async move { self.draw_lines_async(&lines).await })
+    }
+
+    /// Draw several arcs.
+    #[inline]
+    fn draw_arcs_async<'future, 'a, 'b>(
+        &'a mut self,
+        arcs: &'b [GeometricArc],
+    ) -> GenericResult<'future>
+    where
+        'a: 'future,
+        'b: 'future,
+    {
+        let lines: Vec<Line> = arcs
+            .iter()
+            .copied()
+            .flat_map(|arc| arc.into_lines())
+            .collect();
+        Box::pin(async move { self.draw_lines_async(&lines).await })
+    }
+
+    /// Draw an ellipse.
+    #[inline]
+    fn draw_ellipse_async<'future>(
+        &'future mut self,
+        x1: i32,
+        y1: i32,
+        x2: i32,
+        y2: i32,
+    ) -> GenericResult<'future> {
+        self.draw_arc_async(x1, y1, x2, y1, Angle::ZERO, Angle::FULL_CIRCLE)
+    }
+
+    /// Draw several ellipses.
+    #[inline]
+    fn draw_ellipses_async<'future, 'a, 'b>(
+        &'a mut self,
+        rects: &'b [Rectangle],
+    ) -> GenericResult<'future>
+    where
+        'a: 'future,
+        'b: 'future,
+    {
+        let arcs: Vec<GeometricArc> = rects
+            .iter()
+            .copied()
+            .map(|Rectangle { x1, y1, x2, y2 }| GeometricArc {
+                x1,
+                y1,
+                x2,
+                y2,
+                start: Angle::ZERO,
+                end: Angle::FULL_CIRCLE,
+            })
+            .collect();
+        Box::pin(async move { self.draw_arcs_async(&arcs).await })
+    }
+
+    /// Fill in a polygon defined by the given set of points.
+    fn fill_polygon_async<'future, 'a, 'b>(
+        &'a mut self,
+        points: &'b [Point],
+    ) -> GenericResult<'future>
+    where
+        'a: 'future,
+        'b: 'future;
+
+    /// Fill in a path.
+    #[inline]
+    fn fill_path_async<'future>(&'future mut self, mut path: Path) -> GenericResult<'future> {
+        // if the path isn't closed, close it
+        path.close();
+
+        let points: Vec<Point> = path.into_points().collect();
+        Box::pin(async move { self.fill_polygon_async(&points).await })
+    }
+
+    /// Fill in a rectangle.
+    #[inline]
+    fn fill_rectangle_async<'future>(
+        &'future mut self,
+        x1: i32,
+        y1: i32,
+        x2: i32,
+        y2: i32,
+    ) -> GenericResult<'future> {
+        Box::pin(async move {
+            self.fill_polygon_async(&[
+                Point { x: x1, y: y1 },
+                Point { x: x2, y: y1 },
+                Point { x: x2, y: y2 },
+                Point { x: x1, y: y2 },
+                Point { x: x1, y: y1 },
+            ])
+            .await
+        })
+    }
+
+    /// Fill in several rectangles.
+    #[inline]
+    fn fill_rectangles_async<'future, 'a, 'b>(
+        &'a mut self,
+        rects: &'b [Rectangle],
+    ) -> GenericResult<'future>
+    where
+        'a: 'future,
+        'b: 'future,
+    {
+        Box::pin(async move {
+            for rect in rects {
+                self.fill_rectangle_async(rect.x1, rect.y1, rect.x2, rect.y2)
+                    .await?;
+            }
+            Ok(())
+        })
+    }
+
+    /// Fill in an arc.
+    #[inline]
+    fn fill_arc_async<'future>(
+        &'future mut self,
+        x1: i32,
+        y1: i32,
+        x2: i32,
+        y2: i32,
+        start: Angle,
+        end: Angle,
+    ) -> GenericResult<'future> {
+        let arc = GeometricArc {
+            x1,
+            y1,
+            x2,
+            y2,
+            start,
+            end,
+        };
+        let xc = (x1 + x2) / 2;
+        let yc = (y1 + y2) / 2;
+        let pts: Vec<Point> = iter::once(Point { x: xc, y: yc })
+            .chain(arc.into_points())
+            .chain(iter::once(Point { x: xc, y: yc }))
+            .collect();
+        Box::pin(async move { self.fill_polygon_async(&pts).await })
+    }
+
+    /// Fill in several arcs.
+    #[inline]
+    fn fill_arcs_async<'future, 'a, 'b>(
+        &'a mut self,
+        arcs: &'b [GeometricArc],
+    ) -> GenericResult<'future>
+    where
+        'a: 'future,
+        'b: 'future,
+    {
+        Box::pin(async move {
+            for arc in arcs {
+                self.fill_arc_async(arc.x1, arc.y1, arc.x2, arc.y2, arc.start, arc.end)
+                    .await?;
+            }
+            Ok(())
+        })
+    }
+
+    /// Fill in an ellipse.
+    #[inline]
+    fn fill_ellipse_async<'future>(
+        &'future mut self,
+        x1: i32,
+        y1: i32,
+        x2: i32,
+        y2: i32,
+    ) -> GenericResult<'future> {
+        self.fill_arc_async(x1, y1, x2, y2, Angle::ZERO, Angle::FULL_CIRCLE)
+    }
+
+    /// Fill in several ellipses.
+    #[inline]
+    fn fill_ellipses_async<'future, 'a, 'b>(
+        &'a mut self,
+        rects: &'b [Rectangle],
+    ) -> GenericResult<'future>
+    where
+        'a: 'future,
+        'b: 'future,
+    {
+        let arcs: Vec<GeometricArc> = rects
+            .iter()
+            .copied()
+            .map(|Rectangle { x1, y1, x2, y2 }| GeometricArc {
+                x1,
+                y1,
+                x2,
+                y2,
+                start: Angle::ZERO,
+                end: Angle::FULL_CIRCLE,
+            })
+            .collect();
+        Box::pin(async move { self.fill_arcs_async(&arcs).await })
     }
 }

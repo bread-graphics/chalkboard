@@ -1,6 +1,6 @@
 // MIT/Apache2 License
 
-use super::{points_to_polyline, Angle, BezierCurve, Lines, Point};
+use super::{points_to_polyline, Angle, BezierCurve, Line, Point};
 use std::cmp;
 
 /// A geometric arc, or a part of the circle.
@@ -74,14 +74,14 @@ impl GeometricArc {
         // we'll create N line segments
         // TODO: figure out a better N
         let n = cmp::min(self.x2 - self.x1, self.y2 - self.y1) as f32; // approx. perimeter divided by pi
-        let n = n * (start.radians() + end.radians()) * 0.5;
+        let n = n * (self.start.radians() + self.end.radians()) * 0.5;
         let interval = 1f32 / n;
         let xc = (self.x2 as f32 - self.x1 as f32) / 2f32;
         let yc = (self.y2 as f32 - self.y1 as f32) / 2f32;
         let radius = self.x2 as f32 - xc;
 
-        (0..n as usize).map(|i| {
-            let angle = ((i / n as usize) * self.end.radians()) + self.start.radians();
+        (0..n as usize).map(move |i| {
+            let angle = ((i / n as usize) as f32 * self.end.radians()) + self.start.radians();
             Point {
                 x: (xc + (radius * angle.cos())) as i32,
                 y: (yc + (radius * angle.sin())) as i32,

@@ -1,5 +1,7 @@
 // MIT/Apache2 License
 
+use std::iter::FusedIterator;
+
 mod angle;
 mod arc;
 mod curve;
