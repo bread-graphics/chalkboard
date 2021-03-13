@@ -2,6 +2,7 @@
 
 use crate::{
     color::Color,
+    fill::FillRule,
     geometry::{Angle, BezierCurve, GeometricArc, Line, Point, Rectangle},
     path::{Path, PathSegment, PathSegmentType},
 };
@@ -17,10 +18,12 @@ use futures_lite::{
 
 /// A surface which drawing commands can be applied to.
 pub trait Surface {
+    /// Does this surface support drawing gradients?
+    fn supports_gradients(&self) -> bool;
     /// Set the color used to draw lines.
-    fn set_stroke_color(&mut self, color: Color) -> crate::Result;
-    /// Set the color used to fill shapes.
-    fn set_fill_color(&mut self, color: Color) -> crate::Result;
+    fn set_stroke(&mut self, color: Color) -> crate::Result;
+    /// Set the rule used to fill shapes.
+    fn set_fill(&mut self, rule: FillRule) -> crate::Result;
     /// Set the width used to draw lines.
     fn set_line_width(&mut self, width: usize) -> crate::Result;
 

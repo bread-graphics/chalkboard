@@ -12,9 +12,17 @@ pub enum Error {
     StaticMsg(&'static str),
     /// A string message.
     Msg(String),
+    /// Attempted to run an unsupported operation.
+    NotSupported(NSOpType),
     /// A BreadX error occurred.
     #[cfg(feature = "breadx")]
     BreadX(BreadError),
+}
+
+/// An operation that is not supported.
+#[derive(Debug, Copy, Clone)]
+pub enum NSOpType {
+    Gradients,
 }
 
 impl std::error::Error for Error {}
@@ -25,6 +33,9 @@ impl fmt::Display for Error {
         match self {
             Self::StaticMsg(s) => f.write_str(s),
             Self::Msg(s) => f.write_str(s),
+            Self::NotSupported(nsop) => {
+                write!(f, "Surface does not support feature \"{:?}\"", nsop)
+            }
             #[cfg(feature = "breadx")]
             Self::BreadX(bx) => fmt::Display::fmt(bx, f),
         }

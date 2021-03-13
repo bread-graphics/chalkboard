@@ -1,14 +1,14 @@
 // MIT/Apache2 License
 
-use ordered_float::NotNan;
+use crate::intensity::Intensity;
 
 /// A four-element color.
 #[derive(Debug, Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Color {
-    r: NotNan<f32>,
-    g: NotNan<f32>,
-    b: NotNan<f32>,
-    a: NotNan<f32>,
+    r: Intensity,
+    g: Intensity,
+    b: Intensity,
+    a: Intensity,
 }
 
 impl Color {
@@ -20,10 +20,10 @@ impl Color {
     #[inline]
     pub const unsafe fn new_unchecked(r: f32, g: f32, b: f32, a: f32) -> Self {
         Self {
-            r: NotNan::unchecked_new(r),
-            g: NotNan::unchecked_new(g),
-            b: NotNan::unchecked_new(b),
-            a: NotNan::unchecked_new(a),
+            r: Intensity::new_unchecked(r),
+            g: Intensity::new_unchecked(g),
+            b: Intensity::new_unchecked(b),
+            a: Intensity::new_unchecked(a),
         }
     }
 
@@ -31,10 +31,10 @@ impl Color {
     #[inline]
     pub fn new(r: f32, g: f32, b: f32, a: f32) -> Option<Self> {
         Some(Self {
-            r: NotNan::new(r).ok()?,
-            g: NotNan::new(g).ok()?,
-            b: NotNan::new(b).ok()?,
-            a: NotNan::new(a).ok()?,
+            r: Intensity::new(r)?,
+            g: Intensity::new(g)?,
+            b: Intensity::new(b)?,
+            a: Intensity::new(a)?,
         })
     }
 

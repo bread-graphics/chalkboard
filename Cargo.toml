@@ -10,7 +10,9 @@ breadx = { path="../breadx", optional = true }
 # general dependencies
 [dependencies]
 futures-lite = { version = "1.11", optional = true }
+num-traits = "0.2.14"
 ordered-float = "2.1"
+tinyvec = { version = "1.1", features = ["alloc"] }
 
 [features]
 default = ["breadx"]

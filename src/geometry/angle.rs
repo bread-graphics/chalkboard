@@ -1,6 +1,7 @@
 // MIT/Apache2 License
 
 use ordered_float::NotNan;
+use std::ops;
 
 /// An angle.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -45,20 +46,36 @@ impl Angle {
     /// Behavior is undefined if the radians passed in times pi divided by 180 is equal to NaN.
     #[inline]
     pub unsafe fn from_degrees_unchecked(degrees: f32) -> Self {
-        // pi/180 = 0.017453292519943295
-        unsafe { Self::from_radians_unchecked(degrees * 0.017453292519943295) }
+        unsafe { Self::from_radians_unchecked(degrees * std::f32::consts::PI * (1.0 / 180.0)) }
     }
 
     /// Create an angle based on the number of degrees in the angle. This function returns `None` if the degrees given
     /// times pi divided by 180 is NaN.
     #[inline]
     pub fn from_degrees(degrees: f32) -> Option<Self> {
-        Self::from_radians(degrees * 0.017453292519943295)
+        Self::from_radians(degrees * std::f32::consts::PI * (1.0 / 180.0))
     }
 
     /// Get the number of radians in this angle.
     #[inline]
     pub fn radians(self) -> f32 {
         self.radians.into_inner()
+    }
+
+    /// get the number of degrees in this angle.
+    #[inline]
+    pub fn degrees(self) -> f32 {
+        self.radians() * std::f32::consts::FRAC_1_PI * 180.0
+    }
+}
+
+impl ops::Add for Angle {
+    type Output = Self;
+
+    #[inline]
+    fn add(self, other: Self) -> Self {
+        Self {
+            radians: self.radians + other.radians,
+        }
     }
 }
