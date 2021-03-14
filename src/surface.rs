@@ -261,6 +261,8 @@ pub trait Surface {
 /// A surface which drawing commands can be applied to, in a non-blocking way.
 #[cfg(feature = "async")]
 pub trait AsyncSurface: Send {
+    /// Does this surface support drawing gradients?
+    fn supports_gradients(&self) -> bool;
     /// Set the color used to draw lines.
     fn set_stroke_color_async<'future>(&'future mut self, color: Color) -> GenericResult<'future>;
     /// Set the color used to fill shapes.

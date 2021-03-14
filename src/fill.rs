@@ -8,4 +8,5 @@ pub enum FillRule {
     SolidColor(Color),
     LinearGradient(Gradient, Angle),
     RadialGradient(Gradient),
+    ConicalGradient(Gradient),
 }

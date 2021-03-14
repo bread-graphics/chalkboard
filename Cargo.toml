@@ -15,5 +15,6 @@ ordered-float = "2.1"
 tinyvec = { version = "1.1", features = ["alloc"] }
 
 [features]
-default = ["breadx"]
+default = ["breadx", "xrender"]
 async = ["futures-lite", "breadx/async"]
+xrender = ["breadx/render"]

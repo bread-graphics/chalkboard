@@ -84,7 +84,7 @@ impl ColorMapper {
 
     #[cfg(feature = "async")]
     #[inline]
-    async fn map_color_async<Conn: AsyncConnection>(
+    async fn map_color_async<Conn: AsyncConnection + Send>(
         &mut self,
         dpy: &mut Display<Conn>,
         cmap: Colormap,
@@ -258,7 +258,7 @@ impl<'dpy, Conn: Connection> FallbackBreadxSurface<'dpy, Conn> {
 }
 
 #[cfg(feature = "async")]
-impl<'dpy, Conn: AsyncConnection> FallbackBreadxSurface<'dpy, Conn> {
+impl<'dpy, Conn: AsyncConnection + Send> FallbackBreadxSurface<'dpy, Conn> {
     #[inline]
     async fn submit_draw_async(&mut self, draw_type: DrawType) -> crate::Result {
         if let Some(params) = self.submit_draw_params(draw_type) {
