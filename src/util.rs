@@ -16,3 +16,12 @@ where
     let bounds: f32 = (N::max_value() - N::min_value()).into();
     (bounds * i).as_()
 }
+
+/// Used when an object shouldn't be dropped.
+#[cold]
+pub(crate) fn shouldnt_drop(name: &'static str) -> ! {
+    panic!(
+        "Shouldn't naturally drop {}, use free() or free_async() instead",
+        name
+    )
+}

@@ -20,7 +20,8 @@ use breadx::{
 use std::{
     cmp::Ordering,
     collections::hash_map::{Entry, HashMap},
-    mem,
+    mem::{self, MaybeUninit},
+    ptr,
 };
 
 #[cfg(feature = "async")]
@@ -40,7 +41,8 @@ pub struct FallbackBreadxSurface<'dpy, Conn> {
     cmap: Colormap,
 
     // color management
-    mapper: ColorMapper,
+    // note: colormapper is guaranteed to be Some unless into_map is called
+    mapper: Option<ColorMapper>,
     manager: ColorManager,
 
     line_width: Option<usize>,
@@ -175,6 +177,11 @@ impl ColorManager {
 }
 
 impl<'dpy, Conn> FallbackBreadxSurface<'dpy, Conn> {
+    #[inline]
+    fn mapper(&mut self) -> &mut ColorMapper {
+        self.mapper.as_mut().expect("NPP")
+    }
+
     /// Construct a new instance of a FallbackBreadxSurface.
     #[inline]
     pub fn new<Target: Into<Drawable>>(
@@ -188,7 +195,7 @@ impl<'dpy, Conn> FallbackBreadxSurface<'dpy, Conn> {
     /// Destroy this surface and get the cached color map from its remains.
     #[inline]
     pub fn into_colormap(mut self) -> HashMap<Color, u32> {
-        mem::replace(&mut self.mapper.map, HashMap::new())
+        self.mapper.take().expect("NPP").map()
     }
 
     /// Create a new surface from a cached color map. This can speed up certain computations.
@@ -208,7 +215,7 @@ impl<'dpy, Conn> FallbackBreadxSurface<'dpy, Conn> {
             target: target.into(),
             gc,
             cmap,
-            mapper: ColorMapper::new(map),
+            mapper: Some(ColorMapper::new(map)),
             manager: Default::default(),
             line_width: None,
         }
@@ -277,7 +284,7 @@ impl<'dpy, Conn: Connection> Surface for FallbackBreadxSurface<'dpy, Conn> {
 
     #[inline]
     fn set_stroke(&mut self, color: Color) -> crate::Result {
-        let clr = self.mapper.map_color(self.display, self.cmap, color)?;
+        let clr = self.mapper().map_color(self.display, self.cmap, color)?;
         self.manager.set_stroke(clr);
         Ok(())
     }
@@ -285,7 +292,7 @@ impl<'dpy, Conn: Connection> Surface for FallbackBreadxSurface<'dpy, Conn> {
     #[inline]
     fn set_fill(&mut self, rule: FillRule) -> crate::Result {
         if let FillRule::SolidColor(color) = rule {
-            let clr = self.mapper.map_color(self.display, self.cmap, color)?;
+            let clr = self.mapper().map_color(self.display, self.cmap, color)?;
             self.manager.set_fill(clr);
             Ok(())
         } else {
