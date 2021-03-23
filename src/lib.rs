@@ -7,6 +7,8 @@ mod error;
 pub mod color;
 pub mod fill;
 pub mod geometry;
+#[cfg(feature = "gl")]
+pub mod gl;
 pub mod gradient;
 pub mod intensity;
 pub mod path;

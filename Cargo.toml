@@ -9,12 +9,15 @@ breadx = { path="../breadx", optional = true }
 
 # general dependencies
 [dependencies]
+approx = { version = "0.4.0", optional = true }
 futures-lite = { version = "1.11", optional = true }
+log = "0.4"
 num-traits = "0.2.14"
 ordered-float = "2.1"
 tinyvec = { version = "1.1", features = ["alloc"] }
 
 [features]
-default = ["breadx", "xrender"]
+default = ["breadx", "gl", "xrender"]
 async = ["futures-lite", "breadx/async"]
-xrender = ["breadx/render"]
+gl = []
+xrender = ["breadx/render", "approx"]

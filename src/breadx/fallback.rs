@@ -7,7 +7,7 @@ use crate::{
     color::Color,
     fill::FillRule,
     geometry::{Angle, GeometricArc, Line, Point, Rectangle},
-    surface::Surface,
+    surface::{Surface, SurfaceFeatures},
     util::clamp,
 };
 use breadx::{
@@ -26,6 +26,8 @@ use std::{
 
 #[cfg(feature = "async")]
 use breadx::display::AsyncConnection;
+
+const FEATURES: SurfaceFeatures = SurfaceFeatures { gradients: false };
 
 /// Fallback BreadX surface. This uses XProto commands to render, even if they are slower than XRender or OpenGL
 /// rendering.
@@ -278,13 +280,17 @@ impl<'dpy, Conn: AsyncConnection + Send> FallbackBreadxSurface<'dpy, Conn> {
 
 impl<'dpy, Conn: Connection> Surface for FallbackBreadxSurface<'dpy, Conn> {
     #[inline]
-    fn supports_gradients(&self) -> bool {
-        false
+    fn features(&self) -> SurfaceFeatures {
+        FEATURES
     }
 
     #[inline]
     fn set_stroke(&mut self, color: Color) -> crate::Result {
-        let clr = self.mapper().map_color(self.display, self.cmap, color)?;
+        let clr = self
+            .mapper
+            .as_mut()
+            .unwrap()
+            .map_color(self.display, self.cmap, color)?;
         self.manager.set_stroke(clr);
         Ok(())
     }
@@ -292,7 +298,11 @@ impl<'dpy, Conn: Connection> Surface for FallbackBreadxSurface<'dpy, Conn> {
     #[inline]
     fn set_fill(&mut self, rule: FillRule) -> crate::Result {
         if let FillRule::SolidColor(color) = rule {
-            let clr = self.mapper().map_color(self.display, self.cmap, color)?;
+            let clr = self
+                .mapper
+                .as_mut()
+                .unwrap()
+                .map_color(self.display, self.cmap, color)?;
             self.manager.set_fill(clr);
             Ok(())
         } else {

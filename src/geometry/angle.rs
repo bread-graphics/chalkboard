@@ -13,6 +13,9 @@ pub struct Angle {
 impl Angle {
     pub const ZERO: Angle = unsafe { Angle::from_radians_unchecked(0.0) };
     pub const QUARTER_CIRCLE: Angle = unsafe { Angle::from_radians_unchecked(1.5707963267948966) };
+    pub const HALF_CIRCLE: Angle = unsafe { Angle::from_radians_unchecked(std::f32::consts::PI) };
+    pub const THREE_QUARTERS_CIRCLE: Angle =
+        unsafe { Angle::from_radians_unchecked(4.71238898038469) };
     pub const FULL_CIRCLE: Angle = unsafe { Angle::from_radians_unchecked(6.283185307179586) };
 
     /// Create an angle based on the number of radians in the angle.
@@ -62,10 +65,16 @@ impl Angle {
         self.radians.into_inner()
     }
 
-    /// get the number of degrees in this angle.
+    /// Get the number of degrees in this angle.
     #[inline]
     pub fn degrees(self) -> f32 {
         self.radians() * std::f32::consts::FRAC_1_PI * 180.0
+    }
+
+    /// Is this approximately equal to another angle?
+    #[cfg(feature = "approx")]
+    pub(crate) fn approx_eq(self, other: Self) -> bool {
+        approx::abs_diff_eq!(self.radians(), other.radians())
     }
 }
 

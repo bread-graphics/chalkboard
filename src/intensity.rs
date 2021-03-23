@@ -3,7 +3,7 @@
 use crate::util::clamp;
 use ordered_float::NotNan;
 
-/// A popular concept in chalkboard is a range that goes from zero to one, defining intensity of a color or the
+/// A popular concept in `chalkboard` is a range that goes from zero to one, defining intensity of a color or the
 /// stop of a color in a gradient. This type is essentially a wrapper around an `f32`, but with two invariants:
 ///
 /// * The inner value will always be between `0.0` and `1.0`.
@@ -48,13 +48,13 @@ impl Intensity {
 
     /// Clamp this value to a `u8`.
     #[inline]
-    pub fn clamp_to_u8(self) -> u8 {
+    pub fn clamp_u8(self) -> u8 {
         clamp(self.into_inner())
     }
 
     /// Clamp this value to a `u16`.
     #[inline]
-    pub fn clamp_to_u16(self) -> u16 {
+    pub fn clamp_u16(self) -> u16 {
         clamp(self.into_inner())
     }
 }

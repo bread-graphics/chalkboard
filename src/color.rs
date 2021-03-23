@@ -12,6 +12,9 @@ pub struct Color {
 }
 
 impl Color {
+    pub const WHITE: Color = unsafe { Color::new_unchecked(1.0, 1.0, 1.0, 1.0) };
+    pub const BLACK: Color = unsafe { Color::new_unchecked(0.0, 0.0, 0.0, 1.0) };
+
     /// Create a new color.
     ///
     /// # Safety
@@ -60,5 +63,15 @@ impl Color {
     #[inline]
     pub fn alpha(self) -> f32 {
         self.a.into_inner()
+    }
+
+    /// Clamp to u16's.
+    #[inline]
+    pub fn clamp_u16(self) -> (u16, u16, u16, u16) {
+        let r: u16 = self.r.clamp_u16();
+        let g: u16 = self.g.clamp_u16();
+        let b: u16 = self.b.clamp_u16();
+        let a: u16 = self.a.clamp_u16();
+        (r, g, b, a)
     }
 }

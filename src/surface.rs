@@ -16,10 +16,17 @@ use futures_lite::{
     stream::{self, StreamExt},
 };
 
+/// Features that a surface can support.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub struct SurfaceFeatures {
+    /// Does this surface support drawing gradients?
+    pub gradients: bool,
+}
+
 /// A surface which drawing commands can be applied to.
 pub trait Surface {
-    /// Does this surface support drawing gradients?
-    fn supports_gradients(&self) -> bool;
+    /// The set of features this surface supports.
+    fn features(&self) -> SurfaceFeatures;
     /// Set the color used to draw lines.
     fn set_stroke(&mut self, color: Color) -> crate::Result;
     /// Set the rule used to fill shapes.
@@ -261,8 +268,8 @@ pub trait Surface {
 /// A surface which drawing commands can be applied to, in a non-blocking way.
 #[cfg(feature = "async")]
 pub trait AsyncSurface: Send {
-    /// Does this surface support drawing gradients?
-    fn supports_gradients(&self) -> bool;
+    /// The set of features this surface supports.
+    fn features(&self) -> SurfaceFeatures;
     /// Set the color used to draw lines.
     fn set_stroke_color_async<'future>(&'future mut self, color: Color) -> GenericResult<'future>;
     /// Set the color used to fill shapes.
