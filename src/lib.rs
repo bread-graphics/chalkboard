@@ -12,9 +12,9 @@ pub mod intensity;
 pub mod path;
 pub mod surface;
 
-#[cfg(feature = "breadx")]
+#[cfg(all(unix, feature = "breadx"))]
 pub mod breadx;
-#[cfg(feature = "yaww")]
+#[cfg(all(windows, feature = "yaww"))]
 pub mod yaww;
 
 pub(crate) mod util;

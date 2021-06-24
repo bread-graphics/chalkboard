@@ -15,20 +15,20 @@ use std::{
     collections::hash_map::{Entry, HashMap},
 };
 use yaww::{
-    brush::Brush,
+    brush::{Brush, BrushFunctions},
     color::Color as YawwColor,
     dc::Dc,
-    pen::{Pen, PenStyle},
+    pen::{Pen, PenFunctions, PenStyle},
     task::Task,
-    GuiThread, Point as YawwPoint,
+    Point as YawwPoint, SendsDirective,
 };
 
 const FEATURES: SurfaceFeatures = SurfaceFeatures { gradients: false };
 
 /// Yaww GDI drawing surface. This uses GDI to render on surfaces, even if it is slower than OpenGL or Direct2D.
 #[derive(Debug)]
-pub struct YawwGdiSurface<'thread> {
-    thread: &'thread GuiThread,
+pub struct YawwGdiSurface<'thread, S> {
+    thread: &'thread S,
     dc: Dc,
     residual: Option<YawwGdiSurfaceResidual>,
 }
@@ -44,13 +44,9 @@ pub struct YawwGdiSurfaceResidual {
     brushes: HashMap<Color, Brush>,
 }
 
-impl<'thread> YawwGdiSurface<'thread> {
+impl<'thread, S> YawwGdiSurface<'thread, S> {
     #[inline]
-    pub fn from_residual(
-        thread: &'thread GuiThread,
-        dc: Dc,
-        residual: YawwGdiSurfaceResidual,
-    ) -> Self {
+    pub fn from_residual(thread: &'thread S, dc: Dc, residual: YawwGdiSurfaceResidual) -> Self {
         Self {
             thread,
             dc,
@@ -59,7 +55,7 @@ impl<'thread> YawwGdiSurface<'thread> {
     }
 
     #[inline]
-    pub fn new(thread: &'thread GuiThread, dc: Dc) -> Self {
+    pub fn new(thread: &'thread S, dc: Dc) -> Self {
         Self::from_residual(
             thread,
             dc,
@@ -88,7 +84,9 @@ impl<'thread> YawwGdiSurface<'thread> {
     fn residual(&mut self) -> &mut YawwGdiSurfaceResidual {
         self.residual.as_mut().expect("Already dropped?!?!")
     }
+}
 
+impl<'thread, S: SendsDirective> YawwGdiSurface<'thread, S> {
     #[inline]
     fn get_pen_from_color(&mut self, color: Color) -> crate::Result<Pen> {
         let width = self.residual().width;
@@ -132,21 +130,21 @@ impl<'thread> YawwGdiSurface<'thread> {
             DrawType::Stroke => {
                 // clear the fill
                 if let Some(cf) = self.residual().clear_brush.take() {
-                    self.dc.select_object(&self.thread, cf)?.wait()?;
+                    self.dc.select_object(self.thread, cf)?.wait()?;
                 }
 
                 // install the stroke
                 if let Some(s) = self.residual().pen.clone() {
                     let pen = self.get_pen_from_color(s)?;
 
-                    self.dc.select_object(&self.thread, pen)?.wait()?;
+                    self.dc.select_object(self.thread, pen)?.wait()?;
                 }
             }
             DrawType::Fill => {
                 // replace the stroke with a color
                 if let Some(f) = self.residual().brush.clone() {
                     self.dc
-                        .select_object(&self.thread, self.get_pen_from_color(f)?)?
+                        .select_object(self.thread, self.get_pen_from_color(f)?)?
                         .wait()?;
                     let brush = match self.residual().brushes.get(&f) {
                         Some(o) => *o,
@@ -158,7 +156,7 @@ impl<'thread> YawwGdiSurface<'thread> {
                             brush
                         }
                     };
-                    let old_brush = self.dc.select_object(&self.thread, brush)?.wait()?;
+                    let old_brush = self.dc.select_object(self.thread, brush)?.wait()?;
                     if self.residual().clear_brush.is_none() {
                         self.residual().clear_brush = Some(old_brush);
                     }
@@ -176,21 +174,21 @@ impl<'thread> YawwGdiSurface<'thread> {
             DrawType::Stroke => {
                 // clear the fill
                 if let Some(cf) = self.residual().clear_brush.take() {
-                    self.dc.select_object(&self.thread, cf)?.await;
+                    self.dc.select_object(self.thread, cf)?.await;
                 }
 
                 // install the stroke
                 if let Some(s) = self.residual().pen.clone() {
                     let pen = self.get_pen_from_color_async(s).await?;
 
-                    self.dc.select_object(&self.thread, pen)?.await?;
+                    self.dc.select_object(self.thread, pen)?.await?;
                 }
             }
             DrawType::Fill => {
                 // replace the stroke with a color
                 if let Some(f) = self.residual().brush.clone() {
                     self.dc
-                        .select_object(&self.thread, self.get_pen_from_color_async(f)?)?
+                        .select_object(self.thread, self.get_pen_from_color_async(f)?)?
                         .await?;
                     let brush = match self.residual().brushes.get(&f) {
                         Some(o) => *o,
@@ -202,7 +200,7 @@ impl<'thread> YawwGdiSurface<'thread> {
                             brush
                         }
                     };
-                    let old_brush = self.dc.select_object(&self.thread, brush)?.await?;
+                    let old_brush = self.dc.select_object(self.thread, brush)?.await?;
                     if self.residual().clear_brush.is_none() {
                         self.residual().clear_brush = Some(old_brush);
                     }
@@ -216,8 +214,8 @@ impl<'thread> YawwGdiSurface<'thread> {
     #[inline]
     fn line(&mut self, x1: i32, y1: i32, x2: i32, y2: i32) -> crate::Result {
         let t = ArrayIter::new([
-            self.dc.move_to(&self.thread, x1, y1)?,
-            self.dc.line_to(&self.thread, x2, y2)?,
+            self.dc.move_to(self.thread, x1, y1)?,
+            self.dc.line_to(self.thread, x2, y2)?,
         ]);
         self.residual().task_queue.extend(t);
         Ok(())
@@ -231,8 +229,8 @@ impl<'thread> YawwGdiSurface<'thread> {
             .copied()
             .try_for_each::<_, crate::Result>(|Line { x1, y1, x2, y2 }| {
                 let t = ArrayIter::new([
-                    self.dc.move_to(&self.thread, x1, y1)?,
-                    self.dc.line_to(&self.thread, x2, y2)?,
+                    self.dc.move_to(self.thread, x1, y1)?,
+                    self.dc.line_to(self.thread, x2, y2)?,
                 ]);
                 self.residual().task_queue.extend(t);
                 Ok(())
@@ -241,7 +239,7 @@ impl<'thread> YawwGdiSurface<'thread> {
 
     #[inline]
     fn rectangle(&mut self, x1: i32, y1: i32, x2: i32, y2: i32) -> crate::Result {
-        let t = self.dc.rectangle(&self.thread, x1, y1, x2, y2)?;
+        let t = self.dc.rectangle(self.thread, x1, y1, x2, y2)?;
         self.residual().task_queue.push(t);
         Ok(())
     }
@@ -253,7 +251,7 @@ impl<'thread> YawwGdiSurface<'thread> {
             .iter()
             .copied()
             .try_for_each::<_, crate::Result>(|Rectangle { x1, y1, x2, y2 }| {
-                let t = self.dc.rectangle(&self.thread, x1, y1, x2, y2)?;
+                let t = self.dc.rectangle(self.thread, x1, y1, x2, y2)?;
                 self.residual().task_queue.push(t);
                 Ok(())
             })
@@ -279,7 +277,7 @@ impl<'thread> YawwGdiSurface<'thread> {
         });
         let t = self
             .dc
-            .arc(&self.thread, x1, y1, x2, y2, asx, asy, aex, aey)?;
+            .arc(self.thread, x1, y1, x2, y2, asx, asy, aex, aey)?;
         self.residual().task_queue.push(t);
         Ok(())
     }
@@ -294,7 +292,7 @@ impl<'thread> YawwGdiSurface<'thread> {
                 let [asx, asy, aex, aey] = calc_posns(arc);
                 let t = self
                     .dc
-                    .arc(&self.thread, x1, y1, x2, y2, asx, asy, aex, aey)?;
+                    .arc(self.thread, x1, y1, x2, y2, asx, asy, aex, aey)?;
                 self.residual().task_queue.push(t);
                 Ok(())
             })
@@ -302,7 +300,7 @@ impl<'thread> YawwGdiSurface<'thread> {
 
     #[inline]
     fn ellipse(&mut self, x1: i32, y1: i32, x2: i32, y2: i32) -> crate::Result {
-        let t = self.dc.ellipse(&self.thread, x1, y1, x2, y2)?;
+        let t = self.dc.ellipse(self.thread, x1, y1, x2, y2)?;
         self.residual().task_queue.push(t);
         Ok(())
     }
@@ -314,7 +312,7 @@ impl<'thread> YawwGdiSurface<'thread> {
             .iter()
             .copied()
             .try_for_each::<_, crate::Result>(|Rectangle { x1, y1, x2, y2 }| {
-                let t = self.dc.ellipse(&self.thread, x1, y1, x2, y2)?;
+                let t = self.dc.ellipse(self.thread, x1, y1, x2, y2)?;
                 self.residual().task_queue.push(t);
                 Ok(())
             })
@@ -327,7 +325,7 @@ impl<'thread> YawwGdiSurface<'thread> {
             .copied()
             .map(|Point { x, y }| YawwPoint { x, y })
             .collect();
-        let t = self.dc.polygon(&self.thread, points)?;
+        let t = self.dc.polygon(self.thread, points)?;
         self.residual().task_queue.push(t);
         Ok(())
     }
@@ -341,7 +339,7 @@ enum DrawType {
 
 use DrawType::{Fill, Stroke};
 
-impl<'thread> Surface for YawwGdiSurface<'thread> {
+impl<'thread, S: SendsDirective> Surface for YawwGdiSurface<'thread, S> {
     #[inline]
     fn features(&self) -> SurfaceFeatures {
         FEATURES
@@ -662,7 +660,7 @@ fn calc_posns(arc: GeometricArc) -> [i32; 4] {
 
 impl YawwGdiSurfaceResidual {
     #[inline]
-    pub fn free(mut self, gt: &GuiThread) -> crate::Result {
+    pub fn free<S: SendsDirective>(mut self, gt: &S) -> crate::Result {
         // TODO
         Ok(())
     }

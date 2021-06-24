@@ -7,17 +7,19 @@ edition = "2018"
 # general dependencies
 [dependencies]
 approx = { version = "0.4.0", optional = true }
-breadx = { path="../breadx", optional = true }
 futures-lite = { version = "1.11", optional = true }
 log = "0.4"
 num-traits = "0.2.14"
 ordered-float = "2.1"
 tinyvec = { version = "1.1", features = ["alloc"] }
 
+[target.'cfg(unix)'.dependencies]
+breadx = { path="../breadx", optional = true }
+
 [target.'cfg(windows)'.dependencies]
-yaww = { path = "../yaww" }
+yaww = { path = "../yaww", optional = true }
 
 [features]
-default = ["breadx","xrender"]
+default = ["breadx","xrender","yaww"]
 async = ["futures-lite", "breadx/async"]
 xrender = ["breadx/render", "approx"]

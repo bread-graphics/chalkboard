@@ -214,7 +214,8 @@ impl PixmapPicture {
                 y: 0,
                 width,
                 height,
-            }].as_ref(),
+            }]
+            .as_ref(),
         )?;
 
         Ok(pp)
@@ -541,7 +542,8 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
                     y: 0,
                     width: self.width as _,
                     height: self.height as _,
-                }].as_ref(),
+                }]
+                .as_ref(),
             )?;
             self.stroke_applied = true;
         }
@@ -581,9 +583,12 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
                     let height = (y2 - y2).abs();
                     let (p1, p2) = rectangle_angle(width as f64, height as f64, *angle);
                     let (stops, color) = gradient_to_stops_and_color(grad);
-                    let grad = self
-                        .display
-                        .create_linear_gradient(p1, p2, stops.as_slice(), color.as_slice())?;
+                    let grad = self.display.create_linear_gradient(
+                        p1,
+                        p2,
+                        stops.as_slice(),
+                        color.as_slice(),
+                    )?;
                     v.insert(grad.into());
                     Ok(grad)
                 }
@@ -619,9 +624,12 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
                     let cp = Pointfix { x: c, y: c };
                     let (stops, color) = gradient_to_stops_and_color(grad);
                     // create a radial gradient and use transforms to scale it
-                    let conical = self
-                        .display
-                        .create_conical_gradient(cp, 0, stops.as_ref(), color.as_ref())?;
+                    let conical = self.display.create_conical_gradient(
+                        cp,
+                        0,
+                        stops.as_ref(),
+                        color.as_ref(),
+                    )?;
                     // TODO: apply transform
                     v.insert(conical.into());
                     Ok(conical)
@@ -642,7 +650,8 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
                 y: 0,
                 width: self.width,
                 height: self.height,
-            }].as_ref(),
+            }]
+            .as_ref(),
         )?;
 
         // draw trapezoids onto the mask

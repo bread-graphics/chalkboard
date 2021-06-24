@@ -2,7 +2,7 @@
 
 use std::{fmt, num::NonZeroUsize};
 
-#[cfg(feature = "breadx")]
+#[cfg(all(unix, feature = "breadx"))]
 use breadx::BreadError;
 
 #[cfg(feature = "yaww")]
@@ -24,10 +24,10 @@ pub enum Error {
     /// We do not know of the given window.
     NotOurWindow(NonZeroUsize),
     /// A BreadX error occurred.
-    #[cfg(feature = "breadx")]
+    #[cfg(all(unix, feature = "breadx"))]
     BreadX(BreadError),
     /// A Yaww error occurred.
-    #[cfg(feature = "yaww")]
+    #[cfg(all(windows, feature = "yaww"))]
     Yaww(YawwError),
 }
 
@@ -51,15 +51,15 @@ impl fmt::Display for Error {
             Self::NoInitializer => f.write_str("Could not find initializer for current platform"),
             Self::NoScreen(i) => write!(f, "Screen #{} does not exist", i),
             Self::NotOurWindow(w) => write!(f, "Window of ID {:#010x} does not exist", w),
-            #[cfg(feature = "breadx")]
+            #[cfg(all(unix, feature = "breadx"))]
             Self::BreadX(bx) => fmt::Display::fmt(bx, f),
-            #[cfg(feature = "yaww")]
+            #[cfg(all(windows, feature = "yaww"))]
             Self::Yaww(y) => fmt::Display::fmt(y, f),
         }
     }
 }
 
-#[cfg(feature = "breadx")]
+#[cfg(all(unix, feature = "breadx"))]
 impl From<BreadError> for Error {
     #[inline]
     fn from(be: BreadError) -> Self {
