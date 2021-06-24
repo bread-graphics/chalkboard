@@ -5,7 +5,7 @@ use std::{fmt, num::NonZeroUsize};
 #[cfg(all(unix, feature = "breadx"))]
 use breadx::BreadError;
 
-#[cfg(feature = "yaww")]
+#[cfg(all(windows, feature = "yaww"))]
 use yaww::Error as YawwError;
 
 /// Sum error type for chalkboard operations.
@@ -67,7 +67,7 @@ impl From<BreadError> for Error {
     }
 }
 
-#[cfg(feature = "yaww")]
+#[cfg(all(windows, feature = "yaww"))]
 impl From<YawwError> for Error {
     #[inline]
     fn from(ye: YawwError) -> Self {
