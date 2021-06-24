@@ -6,7 +6,7 @@ use crate::{
     geometry::{Angle, Line, Point, Rectangle},
     gradient::Gradient,
     surface::{Surface, SurfaceFeatures},
-    util::{shouldnt_drop, DebugContainer},
+    util::DebugContainer,
 };
 use breadx::{
     auto::{
@@ -15,7 +15,7 @@ use breadx::{
         },
         xproto::Rectangle as XRectangle,
     },
-    display::{Connection, Display, DisplayLike},
+    display::{prelude::*, Display, DisplayBase},
     render::{double_to_fixed, tesselate_shape, RenderDisplay, StandardFormat},
     Drawable, Pixmap,
 };
@@ -29,7 +29,7 @@ use std::{
 use tinyvec::TinyVec;
 
 #[cfg(feature = "async")]
-use breadx::display::AsyncConnection;
+use breadx::display::AsyncDisplay;
 #[cfg(feature = "async")]
 use futures_lite::future;
 
@@ -56,7 +56,7 @@ const XCLR_WHITE: XrColor = XrColor {
 /// XRender-based BreadX surface. This is preferred over the XProto fallback, but it is generally preferred to
 /// use GL rendering on systems that support it.
 #[derive(Debug)]
-pub struct RenderBreadxSurface<'dpy, Dpy> {
+pub struct RenderBreadxSurface<'dpy, Dpy: ?Sized> {
     // display
     display: &'dpy mut RenderDisplay<Dpy>,
     old_checked: bool,
@@ -92,7 +92,7 @@ pub struct RenderBreadxSurface<'dpy, Dpy> {
     dropper: DebugContainer<fn(&mut RenderBreadxSurface<'dpy, Dpy>)>,
 }
 
-impl<'dpy, Dpy> Drop for RenderBreadxSurface<'dpy, Dpy> {
+impl<'dpy, Dpy: ?Sized> Drop for RenderBreadxSurface<'dpy, Dpy> {
     #[inline]
     fn drop(&mut self) {
         log::warn!("It is preferred to call free() or free_async() rather than dropping RenderBreadxSurface");
@@ -100,12 +100,12 @@ impl<'dpy, Dpy> Drop for RenderBreadxSurface<'dpy, Dpy> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
 enum FillRuleKey {
     Color(Color),
-    LinearGradient(Gradient, Angle, XRectangle),
-    RadialGradient(Gradient, XRectangle),
-    ConicalGradient(Gradient, XRectangle),
+    LinearGradient(Gradient, Angle, Rectangle),
+    RadialGradient(Gradient, Rectangle),
+    ConicalGradient(Gradient, Rectangle),
 }
 
 /// Residual from the RenderBreadxSurface, used to save space.
@@ -122,7 +122,7 @@ pub struct RenderResidual {
 
 impl RenderResidual {
     #[inline]
-    pub fn free<Conn: Connection>(mut self, display: &mut Display<Conn>) -> crate::Result {
+    pub fn free<Dpy: Display + ?Sized>(mut self, display: &mut Dpy) -> crate::Result {
         self.mask.free(display)?;
         self.solid.free(display)?;
         self.stroke.free(display)?;
@@ -138,9 +138,9 @@ impl RenderResidual {
 
     #[cfg(feature = "async")]
     #[inline]
-    pub async fn free_async<Conn: AsyncConnection + Send>(
+    pub async fn free_async<Dpy: AsyncDisplay + ?Sized>(
         mut self,
-        display: &mut Display<Conn>,
+        display: &mut Dpy,
     ) -> crate::Result {
         self.mask.free_async(display).await?;
         self.solid.free_async(display).await?;
@@ -170,7 +170,7 @@ struct PixmapPicture {
 
 impl PixmapPicture {
     #[inline]
-    fn free<Conn: Connection>(self, display: &mut Display<Conn>) -> crate::Result {
+    fn free<Dpy: Display + ?Sized>(self, display: &mut Dpy) -> crate::Result {
         self.picture.free(display)?;
         self.pixmap.free(display)?;
         Ok(())
@@ -178,17 +178,14 @@ impl PixmapPicture {
 
     #[cfg(feature = "async")]
     #[inline]
-    async fn free_async<Conn: AsyncConnection + Send>(
-        self,
-        display: &mut Display<Conn>,
-    ) -> crate::Result {
+    async fn free_async<Dpy: AsyncDisplay + ?Sized>(self, display: &mut Dpy) -> crate::Result {
         self.picture.free_async(display).await?;
         self.pixmap.free_async(display).await?;
         Ok(())
     }
 
     #[inline]
-    fn new<Dpy: DisplayLike>(
+    fn new<Dpy: Display + ?Sized>(
         display: &mut RenderDisplay<Dpy>,
         width: u16,
         height: u16,
@@ -197,12 +194,9 @@ impl PixmapPicture {
         repeat: bool,
         format: StandardFormat,
         depth: u8,
-    ) -> crate::Result<PixmapPicture>
-    where
-        Dpy::Connection: Connection,
-    {
+    ) -> crate::Result<PixmapPicture> {
         let pixmap = display
-            .display_mut()
+            .inner_mut()
             .create_pixmap(parent, width, height, depth.into())?;
         let format = display
             .find_standard_format(format)
@@ -212,15 +206,15 @@ impl PixmapPicture {
             picture: display.create_picture(parent, format, Default::default())?,
         };
         pp.picture.fill_rectangles(
-            display.display_mut(),
+            display.inner_mut(),
             PictOp::Clear,
             color,
-            &[XRectangle {
+            [XRectangle {
                 x: 0,
                 y: 0,
                 width,
                 height,
-            }],
+            }].as_ref(),
         )?;
 
         Ok(pp)
@@ -228,7 +222,7 @@ impl PixmapPicture {
 
     #[cfg(feature = "async")]
     #[inline]
-    async fn new_async<Dpy: DisplayLike>(
+    async fn new_async<Dpy: AsyncDisplay + ?Sized>(
         display: &mut RenderDisplay<Dpy>,
         width: u16,
         height: u16,
@@ -237,12 +231,9 @@ impl PixmapPicture {
         repeat: bool,
         format: StandardFormat,
         depth: u8,
-    ) -> crate::Result<PixmapPicture>
-    where
-        Dpy::Connection: AsyncConnection + Send,
-    {
+    ) -> crate::Result<PixmapPicture> {
         let pixmap = display
-            .display_mut()
+            .inner_mut()
             .create_pixmap_async(parent, width, height, dpeth.into())
             .await?;
         let format = display
@@ -257,7 +248,7 @@ impl PixmapPicture {
 
         pp.picture
             .fill_rectangles_async(
-                display.display_mut(),
+                display.inner_mut(),
                 PictOp::Clear,
                 color,
                 &[XRectangle {
@@ -273,17 +264,14 @@ impl PixmapPicture {
     }
 
     #[inline]
-    fn new_a8<Dpy: DisplayLike>(
+    fn new_a8<Dpy: Display + ?Sized>(
         display: &mut RenderDisplay<Dpy>,
         width: u16,
         height: u16,
         color: XrColor,
         parent: Drawable,
         repeat: bool,
-    ) -> crate::Result<PixmapPicture>
-    where
-        Dpy::Connection: Connection,
-    {
+    ) -> crate::Result<PixmapPicture> {
         Self::new(
             display,
             width,
@@ -298,17 +286,14 @@ impl PixmapPicture {
 
     #[cfg(feature = "async")]
     #[inline]
-    async fn new_a8_async<Dpy: DisplayLike>(
+    async fn new_a8_async<Dpy: AsyncDisplay + ?Sized>(
         display: &mut RenderDisplay<Dpy>,
         width: u16,
         height: u16,
         color: XrColor,
         parent: Drawable,
         repeat: bool,
-    ) -> crate::Result<PixmapPicture>
-    where
-        Dpy::Connection: AsyncConnection + Send,
-    {
+    ) -> crate::Result<PixmapPicture> {
         Self::new_async(
             display,
             width,
@@ -323,17 +308,14 @@ impl PixmapPicture {
     }
 
     #[inline]
-    fn new_argb32<Dpy: DisplayLike>(
+    fn new_argb32<Dpy: Display + ?Sized>(
         display: &mut RenderDisplay<Dpy>,
         width: u16,
         height: u16,
         color: XrColor,
         parent: Drawable,
         repeat: bool,
-    ) -> crate::Result<PixmapPicture>
-    where
-        Dpy::Connection: Connection,
-    {
+    ) -> crate::Result<PixmapPicture> {
         Self::new(
             display,
             width,
@@ -348,17 +330,14 @@ impl PixmapPicture {
 
     #[cfg(feature = "async")]
     #[inline]
-    async fn new_argb32_async<Dpy: DisplayLike>(
+    async fn new_argb32_async<Dpy: AsyncDisplay + ?Sized>(
         display: &mut RenderDisplay<Dpy>,
         width: u16,
         height: u16,
         color: XrColor,
         parent: Drawable,
         repeat: bool,
-    ) -> crate::Result<PixmapPicture>
-    where
-        Dpy::Connection: Connection,
-    {
+    ) -> crate::Result<PixmapPicture> {
         Self::new_async(
             display,
             width,
@@ -382,7 +361,7 @@ enum MaybePixmapPicture {
 
 impl MaybePixmapPicture {
     #[inline]
-    fn free<Conn: Connection>(self, display: &mut Display<Conn>) -> crate::Result {
+    fn free<Dpy: Display + ?Sized>(self, display: &mut Dpy) -> crate::Result {
         match self {
             Self::NoPixmap(pic) => pic.free(display)?,
             Self::Pixmap(pp) => pp.free(display)?,
@@ -393,7 +372,7 @@ impl MaybePixmapPicture {
 
     #[cfg(feature = "async")]
     #[inline]
-    async fn free_async<Conn: Connection>(self, display: &mut Display<Conn>) -> crate::Result {
+    async fn free_async<Dpy: AsyncDisplay + ?Sized>(self, display: &mut Dpy) -> crate::Result {
         match self {
             Self::NoPixmap(pic) => pic.free_async(display).await?,
             Self::Pixmap(pp) => pp.free_async(display).await?,
@@ -425,7 +404,7 @@ impl From<Picture> for MaybePixmapPicture {
     }
 }
 
-impl<'dpy, Dpy> RenderBreadxSurface<'dpy, Dpy> {
+impl<'dpy, Dpy: ?Sized> RenderBreadxSurface<'dpy, Dpy> {
     /// Convert this RenderBreadxSurface into the residual.
     #[inline]
     pub fn into_residual(mut self) -> RenderResidual {
@@ -450,10 +429,7 @@ impl<'dpy, Dpy> RenderBreadxSurface<'dpy, Dpy> {
     }
 }
 
-impl<'dpy, Dpy: DisplayLike> RenderBreadxSurface<'dpy, Dpy>
-where
-    Dpy::Connection: Connection,
-{
+impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
     /// Create a new RenderBreadxSurface from residiual leftover.
     #[inline]
     pub fn from_residual<Target: Into<Drawable>>(
@@ -464,8 +440,8 @@ where
         height: u16,
         mut residual: RenderResidual,
     ) -> crate::Result<Self> {
-        let old_checked = display.display_mut().checked();
-        display.display_mut().set_checked(true);
+        let old_checked = display.inner_mut().checked();
+        display.inner_mut().set_checked(true);
         let parent: Drawable = parent.into();
         let a8_format = display
             .find_standard_format(StandardFormat::A8)
@@ -473,7 +449,7 @@ where
 
         // if the width and height doesn't match up, create a new mask
         if width != residual.width || height != residual.height {
-            residual.mask.free(display.display_mut())?;
+            residual.mask.free(display.inner_mut())?;
             residual.mask =
                 PixmapPicture::new_a8(display, width, height, XCLR_TRANS, parent, false)?;
         }
@@ -531,15 +507,15 @@ where
 
     #[inline]
     fn free_internal(&mut self) -> crate::Result {
-        self.mask.free(self.display.display_mut())?;
-        self.stroke.free(self.display.display_mut())?;
-        self.solid.free(self.display.display_mut())?;
+        self.mask.free(self.display.inner_mut())?;
+        self.stroke.free(self.display.inner_mut())?;
+        self.solid.free(self.display.inner_mut())?;
         self.brushes
             .take()
             .unwrap()
             .values()
-            .try_for_each(|v| v.free(self.display.display_mut()))?;
-        self.display.display_mut().set_checked(self.old_checked);
+            .try_for_each(|v| v.free(self.display.inner_mut()))?;
+        self.display.inner_mut().set_checked(self.old_checked);
         Ok(())
     }
 
@@ -557,15 +533,15 @@ where
         if !self.stroke_applied {
             let color = self.stroke_color;
             self.stroke.picture.fill_rectangles(
-                self.display.display_mut(),
+                self.display.inner_mut(),
                 PictOp::Src,
                 color,
-                &[XRectangle {
+                [XRectangle {
                     x: 0,
                     y: 0,
                     width: self.width as _,
                     height: self.height as _,
-                }],
+                }].as_ref(),
             )?;
             self.stroke_applied = true;
         }
@@ -574,7 +550,7 @@ where
 
     /// Get the picture necessary to act as a source for a fill operation.
     #[inline]
-    fn fill_picture(&mut self, rect: XRectangle) -> crate::Result<Picture> {
+    fn fill_picture(&mut self, rect: Rectangle) -> crate::Result<Picture> {
         let key = match &self.fill {
             FillRule::SolidColor(clr) => FillRuleKey::Color(*clr),
             FillRule::LinearGradient(grad, angle) => {
@@ -600,19 +576,23 @@ where
                     Ok(brush.picture)
                 }
                 FillRuleKey::LinearGradient(grad, angle, rect) => {
-                    let XRectangle { width, height, .. } = rect;
-                    let (p1, p2) = rectangle_angle(*width as f64, *height as f64, *angle);
+                    let Rectangle { x1, y1, x2, y2 } = rect;
+                    let width = (x2 - x1).abs();
+                    let height = (y2 - y2).abs();
+                    let (p1, p2) = rectangle_angle(width as f64, height as f64, *angle);
                     let (stops, color) = gradient_to_stops_and_color(grad);
                     let grad = self
                         .display
-                        .create_linear_gradient(p1, p2, &stops, &color)?;
+                        .create_linear_gradient(p1, p2, stops.as_slice(), color.as_slice())?;
                     v.insert(grad.into());
                     Ok(grad)
                 }
                 FillRuleKey::RadialGradient(grad, rect) => {
-                    let XRectangle { width, height, .. } = rect;
-                    let radius = double_to_fixed(*width as f64);
-                    let scaling = (*height as f64) / (*width as f64);
+                    let Rectangle { x1, y1, x2, y2 } = rect;
+                    let width = (x2 - x1).abs();
+                    let height = (y2 - y2).abs();
+                    let radius = double_to_fixed(width as f64);
+                    let scaling = (height as f64) / (width as f64);
                     let c = radius / 2;
                     let cp = Pointfix { x: c, y: c };
                     let (stops, color) = gradient_to_stops_and_color(grad);
@@ -622,24 +602,26 @@ where
                         cp,
                         0,
                         radius,
-                        &stops,
-                        &color,
+                        stops.as_slice(),
+                        color.as_slice(),
                     )?;
                     // TODO: apply transform
                     v.insert(radial.into());
                     Ok(radial)
                 }
                 FillRuleKey::ConicalGradient(grad, rect) => {
-                    let XRectangle { width, height, .. } = rect;
-                    let radius = double_to_fixed(*width as f64);
-                    let scaling = (*height as f64) / (*width as f64);
+                    let Rectangle { x1, y1, x2, y2 } = rect;
+                    let width = (x2 - x1).abs();
+                    let height = (y2 - y2).abs();
+                    let radius = double_to_fixed(width as f64);
+                    let scaling = (height as f64) / (width as f64);
                     let c = radius / 2;
                     let cp = Pointfix { x: c, y: c };
                     let (stops, color) = gradient_to_stops_and_color(grad);
                     // create a radial gradient and use transforms to scale it
                     let conical = self
                         .display
-                        .create_conical_gradient(cp, 0, &stops, &color)?;
+                        .create_conical_gradient(cp, 0, stops.as_ref(), color.as_ref())?;
                     // TODO: apply transform
                     v.insert(conical.into());
                     Ok(conical)
@@ -652,31 +634,31 @@ where
     fn fill_trapezoids(&mut self, traps: &[Trapezoid], source: Picture) -> crate::Result {
         // clear the mask
         self.mask.picture.fill_rectangles(
-            self.display.display_mut(),
+            self.display.inner_mut(),
             PictOp::Src,
             XCLR_TRANS,
-            &[XRectangle {
+            [XRectangle {
                 x: 0,
                 y: 0,
                 width: self.width,
                 height: self.height,
-            }],
+            }].as_ref(),
         )?;
 
         // draw trapezoids onto the mask
         self.mask.picture.trapezoids(
-            self.display.display_mut(),
+            self.display.inner_mut(),
             PictOp::Over,
             self.solid.picture,
             self.a8_format,
             0,
             0,
-            &traps,
+            traps.as_ref(),
         )?;
 
         // use the mask to copy the trapezoids and the desired color onto the destination picture
         source.composite(
-            self.display.display_mut(),
+            self.display.inner_mut(),
             PictOp::Src,
             self.mask.picture,
             self.target,
@@ -722,7 +704,7 @@ where
                 })
                 .collect();
             self.target
-                .fill_rectangles(self.display.display_mut(), PictOp::Src, clr, &rects)?;
+                .fill_rectangles(self.display.inner_mut(), PictOp::Src, clr, &rects)?;
             return Ok(());
         }
 
@@ -765,11 +747,11 @@ where
             .unwrap();
         let height = (y2 - y1) >> 16;
 
-        let src = self.fill_picture(XRectangle {
-            x: 0,
-            y: 0,
-            width: width as _,
-            height: height as _,
+        let src = self.fill_picture(Rectangle {
+            x1: 0,
+            y1: 0,
+            x2: width as _,
+            y2: height as _,
         })?;
         self.fill_trapezoids(&traps, src)
     }
@@ -866,10 +848,7 @@ fn rectangle_angle(width: f64, height: f64, angle: Angle) -> (Pointfix, Pointfix
 }
 
 #[cfg(feature = "async")]
-impl<'dpy, Dpy: DisplayLike> RenderBreadxSurface<'dpy, Dpy>
-where
-    Dpy::Connection: AsyncConnection + Send,
-{
+impl<'dpy, Dpy: AsyncDisplay + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
     /// Create a new RenderBreadxSurface from residiual leftover, async redox.
     #[inline]
     pub async fn from_residual_async<Target: Into<Drawable>>(
@@ -880,13 +859,13 @@ where
         height: u16,
         mut residual: RenderResidual,
     ) -> crate::Result<RenderBreadxSurface<'dpy, Dpy>> {
-        let old_checked = display.display_mut().checked();
-        display.display_mut().set_checked(true);
+        let old_checked = display.inner_mut().checked();
+        display.inner_mut().set_checked(true);
         let parent: Drawable = parent.into();
 
         // if the width and height doesn't match up, create a new mask
         if width != residual.width || height != residual.height {
-            residual.mask.free_async(display.display_mut()).await?;
+            residual.mask.free_async(display.inner_mut()).await?;
             residual.mask =
                 PixmapPicture::new_a8_async(display, width, height, XCLR_TRANS, parent, false)
                     .await?;
@@ -944,11 +923,11 @@ where
 
     #[inline]
     async fn free_internal_async(&mut self) -> crate::Result {
-        self.mask.free_async(self.display.display_mut()).await?;
+        self.mask.free_async(self.display.inner_mut()).await?;
         for v in self.brushes.take().unwrap().values() {
-            v.free_async(self.display.display_mut()).await?;
+            v.free_async(self.display.inner_mut()).await?;
         }
-        self.display.display_mut().set_checked(self.old_checked);
+        self.display.inner_mut().set_checked(self.old_checked);
         Ok(())
     }
 
@@ -961,10 +940,7 @@ where
     }
 }
 
-impl<'dpy, Dpy: DisplayLike> Surface for RenderBreadxSurface<'dpy, Dpy>
-where
-    Dpy::Connection: Connection,
-{
+impl<'dpy, Dpy: Display + ?Sized> Surface for RenderBreadxSurface<'dpy, Dpy> {
     #[inline]
     fn features(&self) -> SurfaceFeatures {
         FEATURES
@@ -991,7 +967,7 @@ where
 
     #[inline]
     fn flush(&mut self) -> crate::Result {
-        self.display.display_mut().synchronize()?;
+        self.display.inner_mut().synchronize()?;
         Ok(())
     }
 
@@ -1016,18 +992,12 @@ where
         let xiter = points.iter().copied().map(|Point { x, .. }| x);
         let x1 = xiter.clone().min().unwrap();
         let x2 = xiter.max().unwrap();
-        let width = x2 - x1;
 
         let yiter = points.iter().copied().map(|Point { y, .. }| y);
         let y1 = yiter.clone().min().unwrap();
         let y2 = yiter.max().unwrap();
-        let height = y2 - y1;
-        let rect = XRectangle {
-            x: 0,
-            y: 0,
-            width: width as _,
-            height: height as _,
-        };
+
+        let rect = Rectangle { x1, y1, x2, y2 };
 
         // translate shapes to polygons
         let points = points.iter().copied().map(|Point { x, y }| Pointfix {
@@ -1118,12 +1088,9 @@ fn line_to_trapezoids(line: Line, width: usize) -> Vec<Trapezoid> {
     tesselate_shape(ArrayIter::new(rectangle))
 }
 
-struct Dropper<'dpy, Dpy>(&'dpy Dpy);
+struct Dropper<'dpy, Dpy: ?Sized>(&'dpy Dpy);
 
-impl<'dpy, Dpy: DisplayLike> Dropper<'dpy, Dpy>
-where
-    Dpy::Connection: Connection,
-{
+impl<'dpy, Dpy: Display + ?Sized> Dropper<'dpy, Dpy> {
     fn sync_dropper(this: &mut RenderBreadxSurface<'dpy, Dpy>) {
         if let Err(e) = this.free_internal() {
             log::error!("Failed to free RenderBreadxSurface: {:?}", e);
@@ -1132,10 +1099,7 @@ where
 }
 
 #[cfg(feature = "async")]
-impl<'dpy, Dpy: DisplayLike> Dropper<'dpy, Dpy>
-where
-    Dpy::Connection: AsyncConnection + Send,
-{
+impl<'dpy, Dpy: AsyncDisplay + ?Sized> Dropper<'dpy, Dpy> {
     fn async_dropper(this: &mut RenderBreadxSurface<'dpy, Dpy>) {
         future::block_on(async {
             if let Err(e) = this.free_internal_async().await {
@@ -1153,5 +1117,15 @@ fn cvt_color(color: Color) -> XrColor {
         green,
         blue,
         alpha,
+    }
+}
+
+#[inline]
+fn cvt_rect(rect: Rectangle) -> XRectangle {
+    XRectangle {
+        x: cmp::min(rect.x1, rect.x2) as _,
+        y: cmp::min(rect.y1, rect.y2) as _,
+        width: (rect.x2 - rect.x1).abs() as _,
+        height: (rect.y2 - rect.y1).abs() as _,
     }
 }

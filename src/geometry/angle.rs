@@ -33,9 +33,8 @@ impl Angle {
     /// Create an angle based on the number of radians in the angle. This function returns `None` if the radians given
     /// is NaN.
     #[inline]
-    pub const fn from_radians(radians: f32) -> Option<Self> {
-        // easy, const way to figure out if we are NaN: NaN is not equal to itself
-        if radians != radians {
+    pub fn from_radians(radians: f32) -> Option<Self> {
+        if radians.is_nan() {
             None
         } else {
             Some(unsafe { Self::from_radians_unchecked(radians) })

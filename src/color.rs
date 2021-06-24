@@ -65,6 +65,16 @@ impl Color {
         self.a.into_inner()
     }
 
+    /// Clamp to u8's.
+    #[inline]
+    pub fn clamp_u8(self) -> (u8, u8, u8, u8) {
+        let r = self.r.clamp_u8();
+        let g = self.g.clamp_u8();
+        let b = self.b.clamp_u8();
+        let a = self.a.clamp_u8();
+        (r, g, b, a)
+    }
+
     /// Clamp to u16's.
     #[inline]
     pub fn clamp_u16(self) -> (u16, u16, u16, u16) {

@@ -17,17 +17,9 @@ where
     (bounds * i).as_()
 }
 
-/// Used when an object shouldn't be dropped.
-#[cold]
-pub(crate) fn shouldnt_drop(name: &'static str) -> ! {
-    panic!(
-        "Shouldn't naturally drop {}, use free() or free_async() instead",
-        name
-    )
-}
-
 /// Hides a type in order to make #[derive(Debug)] usable.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(transparent)]
 pub(crate) struct DebugContainer<T>(pub T);
 
 impl<T> DebugContainer<T> {

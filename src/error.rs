@@ -1,9 +1,12 @@
 // MIT/Apache2 License
 
-use std::fmt;
+use std::{fmt, num::NonZeroUsize};
 
 #[cfg(feature = "breadx")]
 use breadx::BreadError;
+
+#[cfg(feature = "yaww")]
+use yaww::Error as YawwError;
 
 /// Sum error type for chalkboard operations.
 #[derive(Debug)]
@@ -14,9 +17,18 @@ pub enum Error {
     Msg(String),
     /// Attempted to run an unsupported operation.
     NotSupported(NSOpType),
+    /// Attempted to initialize a display when we can't.
+    NoInitializer,
+    /// We do not have access to the given screen.
+    NoScreen(usize),
+    /// We do not know of the given window.
+    NotOurWindow(NonZeroUsize),
     /// A BreadX error occurred.
     #[cfg(feature = "breadx")]
     BreadX(BreadError),
+    /// A Yaww error occurred.
+    #[cfg(feature = "yaww")]
+    Yaww(YawwError),
 }
 
 /// An operation that is not supported.
@@ -36,8 +48,13 @@ impl fmt::Display for Error {
             Self::NotSupported(nsop) => {
                 write!(f, "Surface does not support feature \"{:?}\"", nsop)
             }
+            Self::NoInitializer => f.write_str("Could not find initializer for current platform"),
+            Self::NoScreen(i) => write!(f, "Screen #{} does not exist", i),
+            Self::NotOurWindow(w) => write!(f, "Window of ID {:#010x} does not exist", w),
             #[cfg(feature = "breadx")]
             Self::BreadX(bx) => fmt::Display::fmt(bx, f),
+            #[cfg(feature = "yaww")]
+            Self::Yaww(y) => fmt::Display::fmt(y, f),
         }
     }
 }
@@ -47,6 +64,14 @@ impl From<BreadError> for Error {
     #[inline]
     fn from(be: BreadError) -> Self {
         Self::BreadX(be)
+    }
+}
+
+#[cfg(feature = "yaww")]
+impl From<YawwError> for Error {
+    #[inline]
+    fn from(ye: YawwError) -> Self {
+        Self::Yaww(ye)
     }
 }
 

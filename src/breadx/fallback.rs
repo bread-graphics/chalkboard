@@ -14,7 +14,7 @@ use breadx::{
     auto::xproto::{
         Arc as XArc, Colormap, CoordMode, Point as XPoint, PolyShape, Rectangle as XRect, Segment,
     },
-    display::{Connection, Display, GcParameters},
+    display::{prelude::*, Display, DisplayBase, GcParameters},
     Drawable, Gcontext,
 };
 use std::{
@@ -32,9 +32,9 @@ const FEATURES: SurfaceFeatures = SurfaceFeatures { gradients: false };
 /// Fallback BreadX surface. This uses XProto commands to render, even if they are slower than XRender or OpenGL
 /// rendering.
 #[derive(Debug)]
-pub struct FallbackBreadxSurface<'dpy, Conn> {
+pub struct FallbackBreadxSurface<'dpy, Dpy: DisplayBase + ?Sized> {
     // display
-    display: &'dpy mut Display<Conn>,
+    display: &'dpy mut Dpy,
     old_checked: bool,
 
     // window
@@ -68,9 +68,9 @@ impl ColorMapper {
     }
 
     #[inline]
-    fn map_color<Conn: Connection>(
+    fn map_color<Dpy: Display + ?Sized>(
         &mut self,
-        dpy: &mut Display<Conn>,
+        dpy: &mut Dpy,
         cmap: Colormap,
         color: Color,
     ) -> crate::Result<u32> {
@@ -88,9 +88,9 @@ impl ColorMapper {
 
     #[cfg(feature = "async")]
     #[inline]
-    async fn map_color_async<Conn: AsyncConnection + Send>(
+    async fn map_color_async<Dpy: AsyncDisplay + ?Sized>(
         &mut self,
-        dpy: &mut Display<Conn>,
+        dpy: &mut Dpy,
         cmap: Colormap,
         color: Color,
     ) -> crate::Result<u32> {
@@ -178,7 +178,7 @@ impl ColorManager {
     }
 }
 
-impl<'dpy, Conn> FallbackBreadxSurface<'dpy, Conn> {
+impl<'dpy, Dpy: DisplayBase + ?Sized> FallbackBreadxSurface<'dpy, Dpy> {
     #[inline]
     fn mapper(&mut self) -> &mut ColorMapper {
         self.mapper.as_mut().expect("NPP")
@@ -186,11 +186,7 @@ impl<'dpy, Conn> FallbackBreadxSurface<'dpy, Conn> {
 
     /// Construct a new instance of a FallbackBreadxSurface.
     #[inline]
-    pub fn new<Target: Into<Drawable>>(
-        dpy: &'dpy mut Display<Conn>,
-        target: Target,
-        gc: Gcontext,
-    ) -> Self {
+    pub fn new<Target: Into<Drawable>>(dpy: &'dpy mut Dpy, target: Target, gc: Gcontext) -> Self {
         Self::with_cached_colormap(dpy, target, gc, HashMap::new())
     }
 
@@ -203,7 +199,7 @@ impl<'dpy, Conn> FallbackBreadxSurface<'dpy, Conn> {
     /// Create a new surface from a cached color map. This can speed up certain computations.
     #[inline]
     pub fn with_cached_colormap<Target: Into<Drawable>>(
-        dpy: &'dpy mut Display<Conn>,
+        dpy: &'dpy mut Dpy,
         target: Target,
         gc: Gcontext,
         map: HashMap<Color, u32>,
@@ -248,14 +244,14 @@ impl<'dpy, Conn> FallbackBreadxSurface<'dpy, Conn> {
     }
 }
 
-impl<'dpy, Conn> Drop for FallbackBreadxSurface<'dpy, Conn> {
+impl<'dpy, Dpy: DisplayBase + ?Sized> Drop for FallbackBreadxSurface<'dpy, Dpy> {
     #[inline]
     fn drop(&mut self) {
         self.display.set_checked(self.old_checked);
     }
 }
 
-impl<'dpy, Conn: Connection> FallbackBreadxSurface<'dpy, Conn> {
+impl<'dpy, Dpy: Display + ?Sized> FallbackBreadxSurface<'dpy, Dpy> {
     #[inline]
     fn submit_draw(&mut self, draw_type: DrawType) -> crate::Result {
         if let Some(params) = self.submit_draw_params(draw_type) {
@@ -267,7 +263,7 @@ impl<'dpy, Conn: Connection> FallbackBreadxSurface<'dpy, Conn> {
 }
 
 #[cfg(feature = "async")]
-impl<'dpy, Conn: AsyncConnection + Send> FallbackBreadxSurface<'dpy, Conn> {
+impl<'dpy, Dpy: AsyncDisplay + ?Sized> FallbackBreadxSurface<'dpy, Dpy> {
     #[inline]
     async fn submit_draw_async(&mut self, draw_type: DrawType) -> crate::Result {
         if let Some(params) = self.submit_draw_params(draw_type) {
@@ -278,7 +274,7 @@ impl<'dpy, Conn: AsyncConnection + Send> FallbackBreadxSurface<'dpy, Conn> {
     }
 }
 
-impl<'dpy, Conn: Connection> Surface for FallbackBreadxSurface<'dpy, Conn> {
+impl<'dpy, Dpy: Display + ?Sized> Surface for FallbackBreadxSurface<'dpy, Dpy> {
     #[inline]
     fn features(&self) -> SurfaceFeatures {
         FEATURES
