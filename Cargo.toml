@@ -26,4 +26,4 @@ yaww = { path = "../yaww", optional = true }
 default = ["breadx","xrender","yaww"]
 async = ["futures-lite", "breadx/async"]
 parking_lot = ["yaww/parking_lot"]
-xrender = ["breadx/render", "approx"]
+xrender = ["breadx", "breadx/render", "approx"]

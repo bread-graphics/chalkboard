@@ -91,6 +91,12 @@ fn main() -> Result {
 
             Ok(())
         }
+        Event::Quit => {
+            if let Some(residual) = residual.take() {
+                residual.free(gt).unwrap();
+            }
+            Ok(())
+        }
         _ => Ok(()),
     });
 
