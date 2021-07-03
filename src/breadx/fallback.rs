@@ -522,5 +522,5 @@ fn convert_arc(x1: i32, y1: i32, x2: i32, y2: i32, start: Angle, end: Angle) -> 
 
 #[inline]
 fn convert_angle(angle: Angle) -> i16 {
-    (angle.degrees() * 16.0) as i16
+    (angle.degrees() * 64.0) as i16
 }

@@ -23,6 +23,14 @@ pub enum Error {
     NoScreen(usize),
     /// We do not know of the given window.
     NotOurWindow(NonZeroUsize),
+    /// Not compatible.
+    NotCompatible,
+    /// Attempted to run an illegal operation on a monitor.
+    CannotOnMonitor,
+    /// We already ran the main loop.
+    AlreadyRanMainLoop,
+    /// Cannot draw on the given window.
+    NoValidDraw(NonZeroUsize),
     /// A BreadX error occurred.
     #[cfg(all(unix, feature = "breadx"))]
     BreadX(BreadError),
@@ -51,6 +59,10 @@ impl fmt::Display for Error {
             Self::NoInitializer => f.write_str("Could not find initializer for current platform"),
             Self::NoScreen(i) => write!(f, "Screen #{} does not exist", i),
             Self::NotOurWindow(w) => write!(f, "Window of ID {:#010x} does not exist", w),
+            Self::NotCompatible => f.write_str("Data was not compatbile with interface"),
+            Self::CannotOnMonitor => f.write_str("Cannot run operation on monitor"),
+            Self::AlreadyRanMainLoop => f.write_str("Already ran the main loop"),
+            Self::NoValidDraw(w) => write!(f, "Window of ID {:#010x} cannot be drawn upon", w),
             #[cfg(all(unix, feature = "breadx"))]
             Self::BreadX(bx) => fmt::Display::fmt(bx, f),
             #[cfg(all(windows, feature = "yaww"))]

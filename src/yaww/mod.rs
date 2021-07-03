@@ -160,6 +160,8 @@ impl<'thread, S: SendsDirective> YawwGdiSurface<'thread, S> {
                     if self.residual().clear_brush.is_none() {
                         self.residual().clear_brush = Some(old_brush);
                     }
+                } else {
+                    log::warn!("Tried to fill with empty brush?");
                 }
             }
         }
