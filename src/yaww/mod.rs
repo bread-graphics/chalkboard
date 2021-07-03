@@ -13,11 +13,13 @@ use std::{
     array::IntoIter as ArrayIter,
     cmp,
     collections::hash_map::{Entry, HashMap},
+    mem::drop,
 };
 use yaww::{
     brush::{Brush, BrushFunctions},
     color::Color as YawwColor,
     dc::Dc,
+    gdiobj::{GdiFunctions, StockObject},
     pen::{Pen, PenFunctions, PenStyle},
     task::Task,
     Point as YawwPoint, SendsDirective,
@@ -42,6 +44,31 @@ pub struct YawwGdiSurfaceResidual {
     task_queue: DebugContainer<Vec<Task<yaww::Result<()>>>>,
     pens: HashMap<(Color, usize), Pen>,
     brushes: HashMap<Color, Brush>,
+}
+
+impl YawwGdiSurfaceResidual {
+    #[inline]
+    pub fn free<S: SendsDirective>(self, thread: &S) -> crate::Result {
+        let YawwGdiSurfaceResidual {
+            clear_brush,
+            pens,
+            brushes,
+            ..
+        } = self;
+        pens.into_iter()
+            .try_for_each::<_, crate::Result>(|(_, p)| {
+                let _ = p.delete_gdi(thread)?;
+                Ok(())
+            })?;
+        brushes
+            .into_iter()
+            .try_for_each::<_, crate::Result>(|(_, b)| {
+                let _ = b.delete_gdi(thread)?;
+                Ok(())
+            })?;
+
+        Ok(())
+    }
 }
 
 impl<'thread, S> YawwGdiSurface<'thread, S> {
@@ -88,6 +115,21 @@ impl<'thread, S> YawwGdiSurface<'thread, S> {
 
 impl<'thread, S: SendsDirective> YawwGdiSurface<'thread, S> {
     #[inline]
+    fn clear_brush(&mut self) -> crate::Result<Brush> {
+        match self.residual().clear_brush {
+            Some(cb) => Ok(cb),
+            None => {
+                let cb = self
+                    .thread
+                    .get_stock_object(StockObject::NullBrush)?
+                    .wait()
+                    .ok_or(crate::Error::StaticMsg("Could not acquire null brush"))?;
+                Ok(*self.residual().clear_brush.insert(cb))
+            }
+        }
+    }
+
+    #[inline]
     fn get_pen_from_color(&mut self, color: Color) -> crate::Result<Pen> {
         let width = self.residual().width;
         match self.residual().pens.get(&(color, width)) {
@@ -129,9 +171,8 @@ impl<'thread, S: SendsDirective> YawwGdiSurface<'thread, S> {
         match draw {
             DrawType::Stroke => {
                 // clear the fill
-                if let Some(cf) = self.residual().clear_brush.take() {
-                    self.dc.select_object(self.thread, cf)?.wait()?;
-                }
+                let cb = self.clear_brush()?;
+                self.dc.select_object(self.thread, cb)?.wait()?;
 
                 // install the stroke
                 if let Some(s) = self.residual().pen.clone() {
@@ -156,10 +197,7 @@ impl<'thread, S: SendsDirective> YawwGdiSurface<'thread, S> {
                             brush
                         }
                     };
-                    let old_brush = self.dc.select_object(self.thread, brush)?.wait()?;
-                    if self.residual().clear_brush.is_none() {
-                        self.residual().clear_brush = Some(old_brush);
-                    }
+                    self.dc.select_object(self.thread, brush)?.wait()?;
                 } else {
                     log::warn!("Tried to fill with empty brush?");
                 }
@@ -658,12 +696,4 @@ fn calc_posns(arc: GeometricArc) -> [i32; 4] {
     let (asx, asy) = calc_posn(start.radians());
     let (aex, aey) = calc_posn(end.radians());
     [asx, asy, aex, aey]
-}
-
-impl YawwGdiSurfaceResidual {
-    #[inline]
-    pub fn free<S: SendsDirective>(mut self, gt: &S) -> crate::Result {
-        // TODO
-        Ok(())
-    }
 }
