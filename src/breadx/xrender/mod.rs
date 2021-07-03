@@ -203,11 +203,13 @@ impl PixmapPicture {
             .expect("Format not available");
         let pp = PixmapPicture {
             pixmap,
-            picture: display.create_picture(parent, format, Default::default())?,
+            picture: display.create_picture(pixmap, format, Default::default())?,
         };
+
+        log::debug!("Filling rectangles for pixmap picture: {:?}", pp.picture);
         pp.picture.fill_rectangles(
             display.inner_mut(),
-            PictOp::Clear,
+            PictOp::Src,
             color,
             [XRectangle {
                 x: 0,
