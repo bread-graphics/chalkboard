@@ -149,7 +149,7 @@ pub(crate) fn points_to_polyline<I: IntoIterator<Item = Point>>(
         #[inline]
         fn size_hint(&self) -> (usize, Option<usize>) {
             let (lo, hi) = self.iter.size_hint();
-            (lo - 1, hi.map(|hi| hi - 1))
+            (lo.saturating_sub(1), hi.map(|hi| hi.saturating_sub(1)))
         }
     }
 

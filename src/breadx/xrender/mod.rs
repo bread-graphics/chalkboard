@@ -35,9 +35,9 @@ use futures_lite::future;
 
 const FEATURES: SurfaceFeatures = SurfaceFeatures { gradients: true };
 const XCLR_TRANS: XrColor = XrColor {
-    red: 0,
-    green: 0,
-    blue: 0,
+    red: 0xFFFF,
+    green: 0xFFFF,
+    blue: 0xFFFF,
     alpha: 0,
 };
 const XCLR_BLACK: XrColor = XrColor {
@@ -209,7 +209,7 @@ impl PixmapPicture {
         log::debug!("Filling rectangles for pixmap picture: {:?}", pp.picture);
         pp.picture.fill_rectangles(
             display.inner_mut(),
-            PictOp::Src,
+            PictOp::Over,
             color,
             [XRectangle {
                 x: 0,
@@ -245,14 +245,14 @@ impl PixmapPicture {
         let pp = PixmapPicture {
             pixmap,
             picture: display
-                .create_picture_async(parent, format, Default::default())
+                .create_picture_async(pixmap, format, Default::default())
                 .await?,
         };
 
         pp.picture
             .fill_rectangles_async(
                 display.inner_mut(),
-                PictOp::Clear,
+                PictOp::Over,
                 color,
                 &[XRectangle {
                     x: 0,
@@ -457,7 +457,7 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
                 PixmapPicture::new_a8(display, width, height, XCLR_TRANS, parent, false)?;
         }
 
-        Ok(Self {
+        let this = Self {
             width,
             height,
             display,
@@ -469,13 +469,17 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
             solid: residual.solid,
             stroke: residual.stroke,
             stroke_color: XCLR_BLACK,
-            stroke_applied: true,
+            stroke_applied: false,
             fill: FillRule::SolidColor(Color::BLACK),
             line_width: 1,
             next_gc: residual.next_gc,
             brushes: residual.brushes.take(),
             dropper: DebugContainer::new(Dropper::<'dpy, Dpy>::sync_dropper),
-        })
+        };
+
+        mem::forget(residual);
+
+        Ok(this)
     }
 
     #[inline]
@@ -537,7 +541,7 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
             let color = self.stroke_color;
             self.stroke.picture.fill_rectangles(
                 self.display.inner_mut(),
-                PictOp::Src,
+                PictOp::Over,
                 color,
                 [XRectangle {
                     x: 0,
@@ -645,7 +649,7 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
         // clear the mask
         self.mask.picture.fill_rectangles(
             self.display.inner_mut(),
-            PictOp::Src,
+            PictOp::Over,
             XCLR_TRANS,
             [XRectangle {
                 x: 0,
@@ -670,7 +674,7 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
         // use the mask to copy the trapezoids and the desired color onto the destination picture
         source.composite(
             self.display.inner_mut(),
-            PictOp::Src,
+            PictOp::Over,
             self.mask.picture,
             self.target,
             0,
