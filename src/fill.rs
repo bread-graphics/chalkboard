@@ -6,7 +6,7 @@ use crate::{color::Color, geometry::Angle, gradient::Gradient};
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum FillRule {
     SolidColor(Color),
-    LinearGradient(Gradient, Angle),
-    RadialGradient(Gradient),
-    ConicalGradient(Gradient),
+    LinearGradient(Gradient<'static>, Angle),
+    RadialGradient(Gradient<'static>),
+    ConicalGradient(Gradient<'static>),
 }

@@ -33,6 +33,16 @@ pub struct Path {
     segments: Vec<PathSegment>,
 }
 
+impl IntoIterator for Path {
+    type Item = PathSegment;
+    type IntoIter = VecIter<PathSegment>;
+
+    #[inline]
+    fn into_iter(self) -> VecIter<PathSegment> {
+        self.segments.into_iter()
+    }
+}
+
 impl Path {
     /// Closes this path with an additional straight line.
     #[inline]

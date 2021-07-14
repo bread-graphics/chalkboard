@@ -6,17 +6,18 @@ use crate::{
     geometry::{Angle, Line, Point, Rectangle},
     gradient::Gradient,
     surface::{Surface, SurfaceFeatures},
-    util::DebugContainer,
+    util::{singleton, DebugContainer},
 };
 use breadx::{
     auto::{
         render::{
-            Color as XrColor, Fixed, Linefix, PictOp, Pictformat, Picture, Pointfix, Trapezoid,
+            Color as XrColor, Fixed, Linefix, PictOp, Pictformat, Picture, Pointfix, Repeat,
+            Trapezoid,
         },
         xproto::Rectangle as XRectangle,
     },
     display::{prelude::*, Display, DisplayBase},
-    render::{double_to_fixed, tesselate_shape, RenderDisplay, StandardFormat},
+    render::{double_to_fixed, tesselate_shape, PictureParameters, RenderDisplay, StandardFormat},
     Drawable, Pixmap,
 };
 use std::{
@@ -33,11 +34,14 @@ use breadx::display::AsyncDisplay;
 #[cfg(feature = "async")]
 use futures_lite::future;
 
+mod brushes;
+use brushes::Brushes;
+
 const FEATURES: SurfaceFeatures = SurfaceFeatures { gradients: true };
 const XCLR_TRANS: XrColor = XrColor {
-    red: 0xFFFF,
-    green: 0xFFFF,
-    blue: 0xFFFF,
+    red: 0,
+    green: 0,
+    blue: 0,
     alpha: 0,
 };
 const XCLR_BLACK: XrColor = XrColor {
@@ -64,29 +68,32 @@ pub struct RenderBreadxSurface<'dpy, Dpy: ?Sized> {
     // drawable to create pixmaps on
     parent: Drawable,
 
-    // target
+    // the picture we draw on top of
     target: Picture,
+
+    // width, height and depth of the drawable
     width: u16,
     height: u16,
+    depth: u8,
 
+    // cached format for a8 images
     a8_format: Pictformat,
+    // cached format for the window
+    window_format: Pictformat,
 
     // we draw shapes onto this picture to use as a mask
     mask: PixmapPicture,
+
+    // a 1x1 image containing solid black, used for drawing shapes on the mask
     solid: PixmapPicture,
-    stroke: PixmapPicture,
 
     // brushes associated with fill rules
-    brushes: Option<HashMap<FillRuleKey, MaybePixmapPicture>>,
+    brushes: Option<Brushes>,
 
     // stroke color and fill rule
     stroke_color: XrColor,
-    stroke_applied: bool,
     fill: FillRule,
     line_width: i32,
-
-    // wait until the next garbage collection
-    next_gc: usize,
 
     // emergency drop mechanism, if free() isnt called
     dropper: DebugContainer<fn(&mut RenderBreadxSurface<'dpy, Dpy>)>,
@@ -101,11 +108,11 @@ impl<'dpy, Dpy: ?Sized> Drop for RenderBreadxSurface<'dpy, Dpy> {
 }
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
-enum FillRuleKey {
-    Color(Color),
-    LinearGradient(Gradient, Angle, Rectangle),
-    RadialGradient(Gradient, Rectangle),
-    ConicalGradient(Gradient, Rectangle),
+pub(crate) enum FillRuleKey {
+    Color(XrColor),
+    LinearGradient(Gradient, Angle, u32, u32),
+    RadialGradient(Gradient, u32, u32),
+    ConicalGradient(Gradient, u32, u32),
 }
 
 /// Residual from the RenderBreadxSurface, used to save space.
@@ -113,11 +120,12 @@ enum FillRuleKey {
 pub struct RenderResidual {
     mask: PixmapPicture,
     solid: PixmapPicture,
-    stroke: PixmapPicture,
-    brushes: Option<HashMap<FillRuleKey, MaybePixmapPicture>>,
-    next_gc: usize,
+    brushes: Option<Brushes>,
+    a8_format: Pictformat,
+    window_format: Pictformat,
     width: u16,
     height: u16,
+    depth: u8,
 }
 
 impl RenderResidual {
@@ -125,13 +133,7 @@ impl RenderResidual {
     pub fn free<Dpy: Display + ?Sized>(mut self, display: &mut Dpy) -> crate::Result {
         self.mask.free(display)?;
         self.solid.free(display)?;
-        self.stroke.free(display)?;
-        self.brushes
-            .as_ref()
-            .unwrap()
-            .values()
-            .try_for_each(|val| val.free(display))?;
-        self.brushes.take();
+        self.brushes.take().unwrap().free(display)?;
         mem::forget(self);
         Ok(())
     }
@@ -144,11 +146,7 @@ impl RenderResidual {
     ) -> crate::Result {
         self.mask.free_async(display).await?;
         self.solid.free_async(display).await?;
-        self.stroke.free_async(display).await?;
-        for val in self.brushes.as_ref().unwrap().values() {
-            val.free_async(display).await?;
-        }
-        self.brushes.take();
+        self.brushes.take().unwrap().free_async(display).await?;
         mem::forget(self);
         Ok(())
     }
@@ -163,7 +161,7 @@ impl Drop for RenderResidual {
 
 /// Combines a pixmap and a picture in one.
 #[derive(Debug, Copy, Clone, Default)]
-struct PixmapPicture {
+pub(crate) struct PixmapPicture {
     pixmap: Pixmap,
     picture: Picture,
 }
@@ -201,9 +199,17 @@ impl PixmapPicture {
         let format = display
             .find_standard_format(format)
             .expect("Format not available");
+        let params = if repeat {
+            PictureParameters {
+                repeat: Some(Repeat::Normal),
+                ..Default::default()
+            }
+        } else {
+            Default::default()
+        };
         let pp = PixmapPicture {
             pixmap,
-            picture: display.create_picture(pixmap, format, Default::default())?,
+            picture: display.create_picture(pixmap, format, params)?,
         };
 
         log::debug!("Filling rectangles for pixmap picture: {:?}", pp.picture);
@@ -357,17 +363,17 @@ impl PixmapPicture {
 
 /// A picture that may be associated with a pixmap.
 #[derive(Debug, Copy, Clone)]
-enum MaybePixmapPicture {
-    NoPixmap(Picture),
-    Pixmap(PixmapPicture),
+pub(crate) struct MaybePixmapPicture {
+    pub(crate) picture: Picture,
+    pub(crate) pixmap: Option<Pixmap>,
 }
 
 impl MaybePixmapPicture {
     #[inline]
     fn free<Dpy: Display + ?Sized>(self, display: &mut Dpy) -> crate::Result {
-        match self {
-            Self::NoPixmap(pic) => pic.free(display)?,
-            Self::Pixmap(pp) => pp.free(display)?,
+        self.picture.free(display)?;
+        if let Some(pixmap) = self.pixmap {
+            pixmap.free(display)?;
         }
 
         Ok(())
@@ -376,9 +382,9 @@ impl MaybePixmapPicture {
     #[cfg(feature = "async")]
     #[inline]
     async fn free_async<Dpy: AsyncDisplay + ?Sized>(self, display: &mut Dpy) -> crate::Result {
-        match self {
-            Self::NoPixmap(pic) => pic.free_async(display).await?,
-            Self::Pixmap(pp) => pp.free_async(display).await?,
+        self.picture.free_async(display).await?;
+        if let Some(pixmap) = self.pixmap {
+            pixmap.free_async(display).await?;
         }
 
         Ok(())
@@ -386,24 +392,27 @@ impl MaybePixmapPicture {
 
     #[inline]
     fn picture(self) -> Picture {
-        match self {
-            Self::NoPixmap(pic) => pic,
-            Self::Pixmap(pp) => pp.picture,
-        }
+        self.picture
     }
 }
 
 impl From<PixmapPicture> for MaybePixmapPicture {
     #[inline]
     fn from(pp: PixmapPicture) -> Self {
-        Self::Pixmap(pp)
+        Self {
+            picture: pp.picture,
+            pixmap: Some(pp.pixmap),
+        }
     }
 }
 
 impl From<Picture> for MaybePixmapPicture {
     #[inline]
     fn from(p: Picture) -> Self {
-        Self::NoPixmap(p)
+        Self {
+            picture: p,
+            pixmap: None,
+        }
     }
 }
 
@@ -414,7 +423,6 @@ impl<'dpy, Dpy: ?Sized> RenderBreadxSurface<'dpy, Dpy> {
         let res = RenderResidual {
             mask: self.mask,
             solid: self.solid,
-            stroke: self.stroke,
             next_gc: self.next_gc,
             brushes: Some(self.brushes.take().expect("NPP")),
             width: self.width,
@@ -422,13 +430,6 @@ impl<'dpy, Dpy: ?Sized> RenderBreadxSurface<'dpy, Dpy> {
         };
         mem::forget(self);
         res
-    }
-
-    /// Collect garbage - determine which brushes we probably aren't using, and delete them.
-    #[inline]
-    fn garbage_collection(&mut self) -> TinyVec<[PixmapPicture; 3]> {
-        // todo
-        TinyVec::new()
     }
 }
 
@@ -444,11 +445,8 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
         mut residual: RenderResidual,
     ) -> crate::Result<Self> {
         let old_checked = display.inner_mut().checked();
-        display.inner_mut().set_checked(true);
+        display.inner_mut().set_checked(false);
         let parent: Drawable = parent.into();
-        let a8_format = display
-            .find_standard_format(StandardFormat::A8)
-            .expect("No A8 format present");
 
         // if the width and height doesn't match up, create a new mask
         if width != residual.width || height != residual.height {
@@ -460,19 +458,18 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
         let this = Self {
             width,
             height,
+            depth: residual.depth,
             display,
             old_checked,
             parent: parent,
-            a8_format,
+            a8_format: residual.a8_format,
+            window_format: residual.window_format,
             target: picture,
             mask: residual.mask,
             solid: residual.solid,
-            stroke: residual.stroke,
             stroke_color: XCLR_BLACK,
-            stroke_applied: false,
             fill: FillRule::SolidColor(Color::BLACK),
             line_width: 1,
-            next_gc: residual.next_gc,
             brushes: residual.brushes.take(),
             dropper: DebugContainer::new(Dropper::<'dpy, Dpy>::sync_dropper),
         };
@@ -489,11 +486,11 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
         parent: Target,
         width: u16,
         height: u16,
+        depth: u8,
     ) -> crate::Result<Self> {
         let parent: Drawable = parent.into();
         let mask = PixmapPicture::new_a8(display, width, height, XCLR_TRANS, parent, false)?;
-        let solid = PixmapPicture::new_a8(display, width, height, XCLR_BLACK, parent, true)?;
-        let stroke = PixmapPicture::new_argb32(display, width, height, XCLR_BLACK, parent, true)?;
+        let solid = PixmapPicture::new_a8(display, 1, 1, XCLR_WHITE, parent, true)?;
         Self::from_residual(
             display,
             picture,
@@ -504,10 +501,10 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
                 mask,
                 solid,
                 stroke,
-                next_gc: 32,
                 brushes: Some(HashMap::new()),
                 width,
                 height,
+                depth,
             },
         )
     }
@@ -515,13 +512,11 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
     #[inline]
     fn free_internal(&mut self) -> crate::Result {
         self.mask.free(self.display.inner_mut())?;
-        self.stroke.free(self.display.inner_mut())?;
         self.solid.free(self.display.inner_mut())?;
         self.brushes
             .take()
             .unwrap()
-            .values()
-            .try_for_each(|v| v.free(self.display.inner_mut()))?;
+            .free(self.display.inner_mut())?;
         self.display.inner_mut().set_checked(self.old_checked);
         Ok(())
     }
@@ -537,23 +532,8 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
     /// Get the picture necessary to act as a source for a stroke operation.
     #[inline]
     fn stroke_picture(&mut self) -> crate::Result<Picture> {
-        if !self.stroke_applied {
-            let color = self.stroke_color;
-            self.stroke.picture.fill_rectangles(
-                self.display.inner_mut(),
-                PictOp::Over,
-                color,
-                [XRectangle {
-                    x: 0,
-                    y: 0,
-                    width: self.width as _,
-                    height: self.height as _,
-                }]
-                .as_ref(),
-            )?;
-            self.stroke_applied = true;
-        }
-        Ok(self.stroke.picture)
+        // lines are just special fill polygons, so we take the fill picture
+        self.brushes.as_mut().unwrap().fill(FillRule::Solid(self.stroke_color))
     }
 
     /// Get the picture necessary to act as a source for a fill operation.
@@ -568,36 +548,8 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
             FillRule::ConicalGradient(grad) => FillRuleKey::ConicalGradient(grad.clone(), rect),
         };
 
-        match self.brushes.as_mut().unwrap().entry(key) {
-            Entry::Occupied(o) => Ok(o.get().picture()),
-            Entry::Vacant(v) => match v.key() {
-                FillRuleKey::Color(clr) => {
-                    let brush = PixmapPicture::new_argb32(
-                        self.display,
-                        self.width,
-                        self.height,
-                        cvt_color(*clr),
-                        self.parent,
-                        true,
-                    )?;
-                    v.insert(brush.into());
-                    Ok(brush.picture)
-                }
-                FillRuleKey::LinearGradient(grad, angle, rect) => {
-                    let Rectangle { x1, y1, x2, y2 } = rect;
-                    let width = (x2 - x1).abs();
-                    let height = (y2 - y2).abs();
-                    let (p1, p2) = rectangle_angle(width as f64, height as f64, *angle);
-                    let (stops, color) = gradient_to_stops_and_color(grad);
-                    let grad = self.display.create_linear_gradient(
-                        p1,
-                        p2,
-                        stops.as_slice(),
-                        color.as_slice(),
-                    )?;
-                    v.insert(grad.into());
-                    Ok(grad)
-                }
+        self.brushes.as_mut().unwrap().fill(key)
+
                 FillRuleKey::RadialGradient(grad, rect) => {
                     let Rectangle { x1, y1, x2, y2 } = rect;
                     let width = (x2 - x1).abs();
@@ -645,7 +597,15 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
     }
 
     #[inline]
-    fn fill_trapezoids(&mut self, traps: &[Trapezoid], source: Picture) -> crate::Result {
+    fn fill_triangles(
+        &mut self,
+        triangles: Vec<Triangle>,
+        source: Picture,
+        source_x: i16,
+        source_y: i16,
+    ) -> crate::Result {
+        if triangles.is_empty() { return Ok(()); }
+
         // clear the mask
         self.mask.picture.fill_rectangles(
             self.display.inner_mut(),
@@ -661,14 +621,14 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
         )?;
 
         // draw trapezoids onto the mask
-        self.mask.picture.trapezoids(
+        self.mask.picture.triangles(
             self.display.inner_mut(),
             PictOp::Over,
             self.solid.picture,
             self.a8_format,
             0,
             0,
-            traps.as_ref(),
+            triangles,
         )?;
 
         // use the mask to copy the trapezoids and the desired color onto the destination picture
@@ -677,8 +637,8 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
             PictOp::Over,
             self.mask.picture,
             self.target,
-            0,
-            0,
+            source_x,
+            source_y,
             0,
             0,
             0,
@@ -693,12 +653,12 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
 
     #[inline]
     fn draw_lines_internal<I: IntoIterator<Item = Line>>(&mut self, lines: I) -> crate::Result {
-        let traps: Vec<Trapezoid> = lines
-            .into_iter()
-            .flat_map(|l| line_to_trapezoids(l, self.line_width as _))
-            .collect();
         let src = self.stroke_picture()?;
-        self.fill_trapezoids(&traps, src)
+        let triangles: Vec<Triangle> = lines
+            .into_iter()
+            .flat_map(|l| line_to_triangles(l))
+            .collect();
+        self.fill_triangles(triangles, src, 0, 0)
     }
 
     #[inline]
@@ -719,56 +679,56 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
                 })
                 .collect();
             self.target
-                .fill_rectangles(self.display.inner_mut(), PictOp::Src, clr, &rects)?;
+                .fill_rectangles(self.display.inner_mut(), PictOp::Src, clr, rects)?;
             return Ok(());
         }
 
-        let traps: Vec<Trapezoid> = rects.into_iter().map(|r| rect_to_trapezoid(r)).collect();
-        let x1 = traps
+        // slow path: convert every rectangle to two triangles and then composite it
+        let rectangles: Vec<Rectangle> = rects
+            .into_iter()
+            .filter(|Rectangle { x1, y1, x2, y2 }| x1 != y1 && x2 != y2)
+            .collect();
+        if rectangles.is_empty() {
+            return Ok(());
+        }
+
+        // get the min x and min y
+        let min_x = rects
             .iter()
-            .map(
-                |Trapezoid {
-                     left:
-                         Linefix {
-                             p1: Pointfix { x, .. },
-                             ..
-                         },
-                     ..
-                 }| *x,
-            )
+            .map(|Rectangle { x1, x2, .. }| cmp::min(x1, x2))
             .min()
             .unwrap();
-        let x2 = traps
+        let min_y = rects
             .iter()
-            .map(
-                |Trapezoid {
-                     right:
-                         Linefix {
-                             p1: Pointfix { x, .. },
-                             ..
-                         },
-                     ..
-                 }| *x,
-            )
-            .max()
+            .map(|Rectangle { y1, y2, .. }| cmp::min(y1, y2))
+            .min()
             .unwrap();
-        let width = (x2 - x1) >> 16;
 
-        let y1 = traps.iter().map(|Trapezoid { top, .. }| top).min().unwrap();
-        let y2 = traps
-            .iter()
-            .map(|Trapezoid { bottom, .. }| bottom)
-            .max()
-            .unwrap();
-        let height = (y2 - y1) >> 16;
+        let triangles: Vec<Triangle> = rects
+            .into_iter()
+            .flat_map(|Rectangle { x1, y1, x2, y2 }| {
+                let x1 = (x1 - min_x) << 16;
+                let y1 = (y1 - min_y) << 16;
+                let x2 = (x2 - min_x) << 16;
+                let y2 = (y2 - min_y) << 16;
 
-        let src = self.fill_picture(Rectangle {
-            x1: 0,
-            y1: 0,
-            x2: width as _,
-            y2: height as _,
-        })?;
-        self.fill_trapezoids(&traps, src)
+                ArrayIter::new([
+                    Triangle {
+                        p1: Pointfix { x: x1, y: y1 },
+                        p2: Pointfix { x: x2, y: y1 },
+                        p3: Pointfix { x: x1, y: y2 },
+                    },
+                    Triangle {
+                        p1: Pointfix { x: x2, y: y1 },
+                        p2: Pointfix { x: x2, y: y2 },
+                        p3: Pointfix { x: x1, y: y2 },
+                    },
+                ])
+            })
+            .collect();
+
+        let fill = self.fill_picture()?;
+        self.fill_triangles(triangles, fill, -min_x as i16, -min_y as i16)
     }
 }
 
@@ -963,7 +923,6 @@ impl<'dpy, Dpy: Display + ?Sized> Surface for RenderBreadxSurface<'dpy, Dpy> {
 
     #[inline]
     fn set_stroke(&mut self, color: Color) -> crate::Result {
-        self.stroke_applied = false;
         self.stroke_color = cvt_color(color);
         Ok(())
     }
@@ -1070,7 +1029,7 @@ fn rect_to_trapezoid(rect: Rectangle) -> Trapezoid {
 }
 
 #[inline]
-fn line_to_trapezoids(line: Line, width: usize) -> Vec<Trapezoid> {
+fn line_to_triangles(line: Line, width: usize) -> impl Iterator<Item = Triangle> {
     let width = width as f64;
     // figure out at which angle the line segment is at
     let angle = ((line.y2 - line.y1) as f64).atan2((line.x2 - line.x1) as f64);

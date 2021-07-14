@@ -2,6 +2,7 @@
 
 use crate::{color::Color, intensity::Intensity};
 use std::{
+    borrow::Cow,
     iter::FromIterator,
     slice::{Iter as SliceIter, IterMut as SliceIterMut},
 };
@@ -11,52 +12,33 @@ const EXPECTED_CSTOPS: usize = 3;
 
 /// A gradient of colors.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Gradient {
+pub struct Gradient<'a> {
     // invariant: contains at least 1 element
-    colors: TinyVec<[ColorStop; EXPECTED_CSTOPS]>,
+    colors: Cow<'a, [ColorStop]>,
 }
 
-impl Gradient {
-    /// Create a new gradient without checking to see if it fulfills its conditions.
+impl<'a> Gradient<'a> {
+    /// Convert a `Cow<'_, [ColorStop]`>` into a gradient.
     ///
     /// # Safety
     ///
-    /// Behavior is undefined if the iterator contains zero elements, or if the color stops are not in order by
-    /// their position.
+    /// Behavior is undefined if the `Cow` contains no elements, or if the elements in the `Cow` are not sorted
+    /// by their `position` field.
     #[inline]
-    pub unsafe fn new_unchecked<I: IntoIterator<Item = ColorStop>>(i: I) -> Self {
-        Self {
-            colors: TinyVec::from_iter(i),
-        }
+    pub unsafe fn new_unchecked(colors: Cow<'_, [ColorStop]>) -> Gradient<'a> {
+        Gradient { colors }
     }
 
-    /// Creates a new gradient from an iterator. If the iterator is empty, or if the `position` field of each
-    /// color stop are not in order, this function returns `None`.
+    /// Creates a new gradient from an item that can be converted into a `Cow<'_, [ColorStop]>`. If the item is
+    /// empty, this returns `None`. Note that the elements are sorted before the `Gradient` is returned.
     #[inline]
-    pub fn new<I: IntoIterator<Item = ColorStop>>(mut i: I) -> Option<Self> {
-        let colors: TinyVec<[ColorStop; EXPECTED_CSTOPS]> = TinyVec::from_iter(i);
-        if colors.len() == 0 || {
-            // todo: use is_sorted() once that's stabilized
-            colors
-                .iter()
-                .try_fold(
-                    ColorStop {
-                        position: unsafe { Intensity::new_unchecked(0.0f32) },
-                        color: Color::BLACK,
-                    },
-                    |min, me| {
-                        if me.position <= min.position {
-                            None
-                        } else {
-                            Some(*me)
-                        }
-                    },
-                )
-                .is_none()
-        } {
+    pub fn new<Colors: Into<Cow<'a, [ColorStop]>>>(colors: Colors) -> Option<Gradient> {
+        let mut colors = colors.into();
+        if colors.is_empty() {
             None
         } else {
-            Some(Self { colors })
+            colors.sort_by_key(|c| c.position);
+            Some(Gradient { colors })
         }
     }
 
@@ -71,15 +53,31 @@ impl Gradient {
     pub fn iter_mut(&mut self) -> SliceIterMut<'_, ColorStop> {
         self.colors.iter_mut()
     }
-}
 
-impl IntoIterator for Gradient {
-    type Item = ColorStop;
-    type IntoIter = TinyVecIterator<[ColorStop; EXPECTED_CSTOPS]>;
-
+    /// Get a slice reference to the color stop values.
     #[inline]
-    fn into_iter(self) -> Self::IntoIter {
-        self.colors.into_iter()
+    pub fn as_slice(&self) -> &[ColorStop] {
+        &*self.colors
+    }
+
+    /// Get the inner `Cow<'_, [ColorStop]>` out of the `Gradient`.
+    #[inline]
+    pub fn into_inner(self) -> Cow<'a, [ColorStop]> {
+        self.colors
+    }
+
+    /// Convert this `Gradient<'_>` to a `Gradient<'static>`. This requires copying if the `Gradient` is
+    /// borrowed.
+    #[inline]
+    pub fn into_owned(self) -> Gradient<'static> {
+        match self.colors {
+            Cow::Borrowed(colors) => Gradient {
+                colors: Cow::Owned(colors.to_vec()),
+            },
+            Cow::Owned(colors) => Gradient {
+                colors: Cow::Owned(colors),
+            },
+        }
     }
 }
 
