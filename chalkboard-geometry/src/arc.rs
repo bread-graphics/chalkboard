@@ -1,9 +1,11 @@
 // MIT/Apache2 License
 
-use super::{points_to_polyline, Angle, BezierCurve, Line, Point};
-use std::cmp;
+use super::{polyline, Angle};
 
-/// A geometric arc, or a part of the circle.
+#[cfg(feature = "std")]
+use super::BezierCurve;
+
+/// A geometric arc, or a slice of a circle. It is represented by
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct GeometricArc {
     pub x1: i32,
@@ -63,12 +65,7 @@ impl GeometricArc {
         }
     }
 
-    #[inline]
-    pub fn into_lines(self) -> impl Iterator<Item = Line> {
-        points_to_polyline(self.into_points())
-    }
-
-    /// Convert this arc into a set of lines.
+    /// Convert this arc into a set of points approximating it.
     #[inline]
     pub fn into_points(self) -> impl Iterator<Item = Point> {
         // we'll create N line segments
@@ -87,5 +84,11 @@ impl GeometricArc {
                 y: (yc + (radius * angle.sin())) as i32,
             }
         })
+    }
+
+    /// Convert this arc into a series of lines approximating it.
+    #[inline]
+    pub fn into_lines(self) -> impl Iterator<Item = Line> {
+        polyline(self.into_points())
     }
 }

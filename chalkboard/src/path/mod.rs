@@ -2,6 +2,7 @@
 
 use crate::geometry::{BezierCurve, GeometricArc, Line, Point};
 use std::{array::IntoIter as ArrayIter, ops, vec::IntoIter as VecIter};
+use tinyvec::TinyVec;
 
 /// A segment of a path.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -14,7 +15,7 @@ pub struct PathSegment {
 /// How the path segments connects to the next one.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum PathSegmentType {
-    /// No connection.
+    /// No connection. Ends the path.
     Close,
     /// Straight line.
     StraightLine,
@@ -28,6 +29,12 @@ pub enum PathSegmentType {
 }
 
 /// A path. This is the elementary unit of shapes in this framework.
+/// 
+/// A path consists of a series of path segments, ended with a "close" path segment. This represents a line that
+/// is not completely straight, and may contain curves or vertices. In other contexts, it may represent a closed
+/// two-dimensional shape.
+/// 
+/// Although a path that intersects itself is valid for stroke functions, it is not valid for fill functions.
 #[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Path {
     segments: Vec<PathSegment>,
@@ -45,6 +52,10 @@ impl IntoIterator for Path {
 
 impl Path {
     /// Closes this path with an additional straight line.
+    /// 
+    /// # Panics
+    /// 
+    /// Panics if the path is empty.
     #[inline]
     pub fn close(&mut self) {
         let first = self.segments.first().expect("No segments").clone();
@@ -70,7 +81,7 @@ impl Path {
     /// Create a new path consisting of only a line.
     #[inline]
     pub fn from_line(x1: i32, y1: i32, x2: i32, y2: i32) -> Self {
-        Self::new(ArrayIter::new([
+        Self { segments: vec![
             PathSegment {
                 x: x1,
                 y: y1,
@@ -81,13 +92,13 @@ impl Path {
                 y: y2,
                 ty: PathSegmentType::Close,
             },
-        ]))
+        ] }
     }
 
     /// Create a new path consisting of only a bezier curve.
     #[inline]
     pub fn from_bezier_curve(bc: BezierCurve) -> Self {
-        Self::new(ArrayIter::new([
+        Self { segments: vec![
             PathSegment {
                 x: bc.start.x,
                 y: bc.start.y,
@@ -103,7 +114,7 @@ impl Path {
                 y: bc.end.y,
                 ty: PathSegmentType::Close,
             },
-        ]))
+        ] }
     }
 
     /// Create a new path consisting of only an arc.
@@ -115,70 +126,7 @@ impl Path {
     /// Convert this path into a series of points.
     #[inline]
     pub fn into_points(self) -> impl Iterator<Item = Point> {
-        struct PointConverter {
-            inner: VecIter<PathSegment>,
-            lastpath: Option<PathSegment>,
-            bezierpts: Option<VecIter<Point>>,
-        }
-
-        impl Iterator for PointConverter {
-            type Item = Point;
-
-            #[inline]
-            fn next(&mut self) -> Option<Point> {
-                if let Some(ref mut bezierpts) = self.bezierpts {
-                    match bezierpts.next() {
-                        Some(p) => return Some(p),
-                        None => {
-                            self.bezierpts = None;
-                        }
-                    }
-                }
-
-                let cur = self.inner.next()?;
-
-                let lastpath = self.lastpath.take();
-                self.lastpath = Some(cur);
-                match lastpath.map(|l| l.ty) {
-                    Some(PathSegmentType::StraightLine) | None => (),
-                    Some(PathSegmentType::Close) => return None,
-                    Some(PathSegmentType::BezierCurve {
-                        ctx1,
-                        cty1,
-                        ctx2,
-                        cty2,
-                    }) => {
-                        let bc = BezierCurve {
-                            start: Point {
-                                x: lastpath.unwrap().x,
-                                y: lastpath.unwrap().y,
-                            },
-                            control1: Point { x: ctx1, y: cty1 },
-                            control2: Point { x: ctx2, y: cty2 },
-                            end: Point { x: cur.x, y: cur.y },
-                        };
-                        let mut bezierpts: Vec<Point> = bc.into_points().collect();
-                        let p = bezierpts.remove(0);
-                        bezierpts.pop();
-                        self.bezierpts = Some(bezierpts.into_iter());
-                        return Some(p);
-                    }
-                }
-
-                Some(Point { x: cur.x, y: cur.y })
-            }
-
-            #[inline]
-            fn size_hint(&self) -> (usize, Option<usize>) {
-                (0, self.inner.size_hint().1)
-            }
-        }
-
-        PointConverter {
-            inner: self.segments.into_iter(),
-            lastpath: None,
-            bezierpts: None,
-        }
+        self.segments.into_iter().scan
     }
 
     /// Convert this path to a series of lines.

@@ -533,7 +533,10 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
     #[inline]
     fn stroke_picture(&mut self) -> crate::Result<Picture> {
         // lines are just special fill polygons, so we take the fill picture
-        self.brushes.as_mut().unwrap().fill(FillRule::Solid(self.stroke_color))
+        self.brushes
+            .as_mut()
+            .unwrap()
+            .fill(FillRule::Solid(self.stroke_color))
     }
 
     /// Get the picture necessary to act as a source for a fill operation.
@@ -549,51 +552,52 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
         };
 
         self.brushes.as_mut().unwrap().fill(key)
-
-                FillRuleKey::RadialGradient(grad, rect) => {
-                    let Rectangle { x1, y1, x2, y2 } = rect;
-                    let width = (x2 - x1).abs();
-                    let height = (y2 - y2).abs();
-                    let radius = double_to_fixed(width as f64);
-                    let scaling = (height as f64) / (width as f64);
-                    let c = radius / 2;
-                    let cp = Pointfix { x: c, y: c };
-                    let (stops, color) = gradient_to_stops_and_color(grad);
-                    // create a radial gradient and use transforms to scale it
-                    let radial = self.display.create_radial_gradient(
-                        cp.clone(),
-                        cp,
-                        0,
-                        radius,
-                        stops.as_slice(),
-                        color.as_slice(),
-                    )?;
-                    // TODO: apply transform
-                    v.insert(radial.into());
-                    Ok(radial)
+        /*
+                        FillRuleKey::RadialGradient(grad, rect) => {
+                            let Rectangle { x1, y1, x2, y2 } = rect;
+                            let width = (x2 - x1).abs();
+                            let height = (y2 - y2).abs();
+                            let radius = double_to_fixed(width as f64);
+                            let scaling = (height as f64) / (width as f64);
+                            let c = radius / 2;
+                            let cp = Pointfix { x: c, y: c };
+                            let (stops, color) = gradient_to_stops_and_color(grad);
+                            // create a radial gradient and use transforms to scale it
+                            let radial = self.display.create_radial_gradient(
+                                cp.clone(),
+                                cp,
+                                0,
+                                radius,
+                                stops.as_slice(),
+                                color.as_slice(),
+                            )?;
+                            // TODO: apply transform
+                            v.insert(radial.into());
+                            Ok(radial)
+                        }
+                        FillRuleKey::ConicalGradient(grad, rect) => {
+                            let Rectangle { x1, y1, x2, y2 } = rect;
+                            let width = (x2 - x1).abs();
+                            let height = (y2 - y2).abs();
+                            let radius = double_to_fixed(width as f64);
+                            let scaling = (height as f64) / (width as f64);
+                            let c = radius / 2;
+                            let cp = Pointfix { x: c, y: c };
+                            let (stops, color) = gradient_to_stops_and_color(grad);
+                            // create a radial gradient and use transforms to scale it
+                            let conical = self.display.create_conical_gradient(
+                                cp,
+                                0,
+                                stops.as_ref(),
+                                color.as_ref(),
+                            )?;
+                            // TODO: apply transform
+                            v.insert(conical.into());
+                            Ok(conical)
+                        }
+                    },
                 }
-                FillRuleKey::ConicalGradient(grad, rect) => {
-                    let Rectangle { x1, y1, x2, y2 } = rect;
-                    let width = (x2 - x1).abs();
-                    let height = (y2 - y2).abs();
-                    let radius = double_to_fixed(width as f64);
-                    let scaling = (height as f64) / (width as f64);
-                    let c = radius / 2;
-                    let cp = Pointfix { x: c, y: c };
-                    let (stops, color) = gradient_to_stops_and_color(grad);
-                    // create a radial gradient and use transforms to scale it
-                    let conical = self.display.create_conical_gradient(
-                        cp,
-                        0,
-                        stops.as_ref(),
-                        color.as_ref(),
-                    )?;
-                    // TODO: apply transform
-                    v.insert(conical.into());
-                    Ok(conical)
-                }
-            },
-        }
+        */
     }
 
     #[inline]
@@ -604,7 +608,9 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
         source_x: i16,
         source_y: i16,
     ) -> crate::Result {
-        if triangles.is_empty() { return Ok(()); }
+        if triangles.is_empty() {
+            return Ok(());
+        }
 
         // clear the mask
         self.mask.picture.fill_rectangles(

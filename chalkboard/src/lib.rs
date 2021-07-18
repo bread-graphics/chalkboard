@@ -1,15 +1,12 @@
 // MIT/Apache2 License
 
+#![forbid(unsafe_code)]
+
 mod error;
 
 pub mod color;
 pub mod fill;
-pub mod geometry;
-//#[cfg(feature = "gl")]
-//pub mod gl;
 pub mod gradient;
-pub mod intensity;
-pub mod path;
 pub mod surface;
 
 #[cfg(all(unix, feature = "breadx"))]
@@ -27,3 +24,8 @@ pub use gradient::*;
 pub use intensity::*;
 pub use path::*;
 pub use surface::*;
+
+#[doc(inline)]
+pub use chalkboard_geometry::{
+    Angle, BezierCurve, GeometricArc, Intensity, Line, Path, Point, Rectangle,
+};

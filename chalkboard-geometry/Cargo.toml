@@ -1,0 +1,14 @@
+[package]
+name = "chalkboard-geometry"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+micromath = "2"
+num-traits = { version = "0.2.1", default-features = false }
+ordered-float = { version = "2.7", default-features = false }
+
+[features]
+default = ["alloc", "std"]
+alloc = []
+std = ["alloc", "num-traits/std", "ordered-float/std"]

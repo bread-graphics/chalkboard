@@ -9,7 +9,7 @@
 //!
 //! In order to defeat this worst-case scenario, we've created what's essentially a "garbage collected" hash map
 //! of brushes. The amount of usage each brush gets is tracked.
-//! 
+//!
 //! TODO: finish the algorithm
 
 use super::{FillRuleKey, MaybePixmapPicture};
@@ -89,10 +89,11 @@ impl Brushes {
                 FillRuleKey::LinearGradient(grad, angle, rect) => {
                     // figure out the dimensions for the gradient
                     let Rectangle { x1, y1, x2, y2 } = rect;
-                    let width = (x2 - x1).abs(); let height = (y2 - y1).abs();
+                    let width = (x2 - x1).abs();
+                    let height = (y2 - y1).abs();
                     let (p1, p2) = rectangle_angle(width as f64, height as f64, *angle);
                     let (stops, color) = gradient_to_stops_and_color(grad);
-                    
+
                     // create the gradient proper
                     let grad = dpy.create_linear_gradient(p1, p2, stops, color)?;
                     v.insert(grad);
