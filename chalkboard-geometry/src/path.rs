@@ -1,7 +1,12 @@
 // MIT/Apache2 License
 
-use super::{polyline, BezierCurve, Line, Point};
-use core::iter::{Fuse, FusedIterator};
+#![allow(clippy::module_name_repetitions)]
+
+use super::{outline, polyline, BezierCurve, GeometricArc, Line, Point};
+use core::{
+    cmp,
+    iter::{Fuse, FusedIterator},
+};
 
 #[cfg(feature = "alloc")]
 use alloc::{boxed::Box, vec, vec::Vec};
@@ -60,8 +65,9 @@ impl Default for PathSegmentType {
 
 impl PathSlice {
     /// Convert a slice of [`PathSegment`]s to a `PathSlice`.
+    #[must_use]
     #[inline]
-    pub fn from_segment_slice<'a>(segments: &'a [PathSegment]) -> &'a PathSlice {
+    pub fn from_segment_slice(segments: &[PathSegment]) -> &PathSlice {
         // SAFETY: PathSlice is repr(transparent), so it has the same layout as a PathSegment slice. This cast is
         //         valid.
         unsafe { &*(segments as *const [PathSegment] as *const PathSlice) }
@@ -69,13 +75,14 @@ impl PathSlice {
 
     /// Convert a mutable slice of [`PathSegments`]s to a mutable `PathSlice`.
     #[inline]
-    pub fn from_segment_slice_mut<'a>(segments: &'a mut [PathSegment]) -> &'a mut PathSlice {
+    pub fn from_segment_slice_mut(segments: &mut [PathSegment]) -> &mut PathSlice {
         // SAFETY: same as above
         unsafe { &mut *(segments as *mut [PathSegment] as *mut PathSlice) }
     }
 
     /// Convert a boxed `PathSlice` into a `Path`.
     #[cfg(feature = "alloc")]
+    #[must_use]
     #[inline]
     pub fn into_path(self: Box<PathSlice>) -> Path {
         // SAFETY: same as above
@@ -87,6 +94,7 @@ impl PathSlice {
 
     /// Copy this `PathSlice` into a `Path`.
     #[cfg(feature = "alloc")]
+    #[must_use]
     #[inline]
     pub fn to_path(&self) -> Path {
         let len = self.segments.len();
@@ -105,6 +113,7 @@ impl PathSlice {
     /// The path is meaningless if there are no segments or if there is only one segment. A meaningless path will
     /// draw nothing to the screen, and is a no-op for several other operations as well.
     #[inline]
+    #[must_use]
     pub fn is_meaningless(&self) -> bool {
         self.segments.len() <= 1
     }
@@ -120,11 +129,22 @@ impl PathSlice {
     pub fn iter_lines(&self) -> impl Iterator<Item = Line> + '_ {
         polyline(self.iter_points())
     }
+
+    /// Get a closed path representing an outline of this path.
+    #[cfg(feature = "alloc")]
+    #[must_use]
+    #[inline]
+    pub fn outline(&self, line_width: u32) -> Path {
+        let mut path = Path::polyline(outline(self.iter_points(), line_width));
+        path.close();
+        path
+    }
 }
 
 #[cfg(feature = "alloc")]
 impl Path {
     /// Create a new, empty path.
+    #[must_use]
     #[inline]
     pub fn new() -> Path {
         Path { segments: vec![] }
@@ -145,7 +165,29 @@ impl Path {
         }
     }
 
+    /// Create a path based around a `GeometricArc`, but closed.
+    #[inline]
+    pub fn from_arc_closed(arc: GeometricArc) -> Path {
+        let GeometricArc { x1, y1, x2, y2, .. } = arc;
+        let mut path = Path::from(arc);
+        let xr = (x2 - x1).abs();
+        let yr = (y2 - y1).abs();
+        let xm = cmp::min(x1, x2);
+        let ym = cmp::min(y1, y2);
+
+        // if the arc is not a full ellipse, complete it
+        path.push(PathSegment {
+            x: xr + xm,
+            y: yr + ym,
+            ty: PathSegmentType::StraightLine,
+        });
+        path.close();
+
+        path
+    }
+
     /// Convert this `Path` into a boxed `PathSlice`.
+    #[must_use]
     #[inline]
     pub fn into_boxed_path_slice(self) -> Box<PathSlice> {
         let segments: Box<[PathSegment]> = self.segments.into_boxed_slice();
@@ -165,17 +207,26 @@ impl Path {
         polyline(self.into_iter_points())
     }
 
+    /// Convert this path into an equivalent closed `Path` representing an outline of this path.
+    #[inline]
+    pub fn into_outline(self, line_width: u32) -> Path {
+        let mut path = Path::polyline(outline(self.into_iter_points(), line_width));
+        path.close();
+        path
+    }
+
     /// Closes the path with a straight line between the last path segment in the list and the first one...
     /// unless the path is already closed, then this does nothing.
     ///
     /// If the path is meaningless, this does nothing.
+    #[allow(clippy::missing_panics_doc)]
     #[inline]
     pub fn close(&mut self) {
         if self.is_meaningless() {
             return;
         }
 
-        let first = self.segments.first().unwrap().clone();
+        let first = *self.segments.first().unwrap();
         let last = self.segments.last_mut().unwrap();
 
         if first.x != last.x || first.y != last.y {
@@ -193,6 +244,40 @@ impl Path {
     #[inline]
     pub fn push(&mut self, seg: PathSegment) {
         self.segments.push(seg);
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl From<BezierCurve> for Path {
+    #[inline]
+    fn from(bc: BezierCurve) -> Path {
+        Path {
+            segments: vec![
+                PathSegment {
+                    x: bc.start.x,
+                    y: bc.start.y,
+                    ty: PathSegmentType::BezierCurve {
+                        ctx1: bc.control1.x,
+                        cty1: bc.control1.y,
+                        ctx2: bc.control2.x,
+                        cty2: bc.control2.y,
+                    },
+                },
+                PathSegment {
+                    x: bc.end.x,
+                    y: bc.end.y,
+                    ty: PathSegmentType::StraightLine,
+                },
+            ],
+        }
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl From<GeometricArc> for Path {
+    #[inline]
+    fn from(arc: GeometricArc) -> Path {
+        Path::polyline(arc.into_points())
     }
 }
 
@@ -231,56 +316,116 @@ fn path_segments_to_points<I: IntoIterator<Item = PathSegment>>(
 ) -> impl Iterator<Item = Point> {
     PathSegmentsToPoints {
         inner_pathseg_iter: segments.into_iter().fuse(),
-        bezier_curve_iter: None,
+        front_bezier_curve_iter: None,
+        back_bezier_curve_iter: None,
         bezier_curve_iteration_function: BezierCurve::into_points,
-        prev_segment: None,
+        front_prev_segment: None,
+        back_prev_segment: None,
     }
 }
 
 // If there is a way to do this without a custom iterator, please open a pull request.
 // This is sort of akin to a scan() followed by a flat_map(), but it's not possible without allocating, at
 // least, as far as I know.
+// This is also double-ended so it works with outline(), which scan() does not.
+#[derive(Clone)]
 struct PathSegmentsToPoints<I, B> {
     inner_pathseg_iter: Fuse<I>,
-    bezier_curve_iter: Option<B>,
+    front_bezier_curve_iter: Option<B>,
+    back_bezier_curve_iter: Option<B>,
     bezier_curve_iteration_function: fn(BezierCurve) -> B,
-    prev_segment: Option<PathSegment>,
+    front_prev_segment: Option<PathSegment>,
+    back_prev_segment: Option<PathSegment>,
 }
 
-impl<I: Iterator<Item = PathSegment>, B: Iterator<Item = Point>> Iterator
-    for PathSegmentsToPoints<I, B>
-{
-    type Item = Point;
+impl<I, B> PathSegmentsToPoints<I, B> {
+    #[inline]
+    fn front_bezier_curve_iter(&mut self, from_front: bool) -> &mut Option<B> {
+        if from_front {
+            &mut self.front_bezier_curve_iter
+        } else {
+            &mut self.back_bezier_curve_iter
+        }
+    }
 
     #[inline]
-    fn next(&mut self) -> Option<Point> {
+    fn back_bezier_curve_iter(&mut self, from_front: bool) -> &mut Option<B> {
+        if from_front {
+            &mut self.back_bezier_curve_iter
+        } else {
+            &mut self.front_bezier_curve_iter
+        }
+    }
+
+    #[inline]
+    fn front_prev_segment(&mut self, from_front: bool) -> &mut Option<PathSegment> {
+        if from_front {
+            &mut self.front_prev_segment
+        } else {
+            &mut self.back_prev_segment
+        }
+    }
+
+    #[inline]
+    fn back_prev_segment(&mut self, from_front: bool) -> &mut Option<PathSegment> {
+        if from_front {
+            &mut self.back_prev_segment
+        } else {
+            &mut self.front_prev_segment
+        }
+    }
+
+    #[inline]
+    fn next_impl<
+        FI: FnMut(&mut Fuse<I>) -> Option<PathSegment>,
+        FB: FnMut(&mut B) -> Option<Point>,
+    >(
+        &mut self,
+        from_front: bool,
+        mut iter_next: FI,
+        mut bezier_next: FB,
+    ) -> Option<Point> {
         loop {
             // if there are any elements left in the ongoing bezier curve iterator, take them
-            if let Some(ref mut bezier_curve_iter) = self.bezier_curve_iter {
-                match bezier_curve_iter.next() {
+            if let Some(bezier_curve_iter) = self.front_bezier_curve_iter(from_front).as_mut() {
+                match bezier_next(bezier_curve_iter) {
                     Some(pt) => return Some(pt),
                     None => {
-                        self.bezier_curve_iter = None;
+                        *self.front_bezier_curve_iter(from_front) = None;
                     }
                 }
             }
 
             // get a segment from the inner iterator
-            let seg = match self.inner_pathseg_iter.next() {
+            let seg = match iter_next(&mut self.inner_pathseg_iter) {
                 Some(seg) => seg,
                 None => {
                     // we may not have yet taken the latest prev_segment and returned its inner point
                     // the type is irrelevant here
                     // this does not defeat meaningless paths
+                    // if that's empty, try to take from the existing back
+                    match (
+                        self.front_prev_segment(from_front).take(),
+                        self.back_bezier_curve_iter(from_front).as_mut(),
+                    ) {
+                        (Some(PathSegment { x, y, .. }), _) => return Some(Point { x, y }),
+                        // try to iterate from the back if possible
+                        (None, Some(bezier_curve_iter)) => match bezier_next(bezier_curve_iter) {
+                            Some(pt) => return Some(pt),
+                            None => {}
+                        },
+                        (None, None) => {}
+                    }
+
                     return self
-                        .prev_segment
+                        .back_prev_segment(from_front)
                         .take()
                         .map(|PathSegment { x, y, .. }| Point { x, y });
                 }
             };
 
             // if prev_segment has yet to be set, get an element from the inner iterator and set it
-            let prev_seg = match self.prev_segment.replace(seg) {
+            let prev_seg = match self.front_prev_segment(from_front).replace(seg) {
                 Some(prev_seg) => prev_seg,
                 None => continue,
             };
@@ -317,10 +462,21 @@ impl<I: Iterator<Item = PathSegment>, B: Iterator<Item = Point>> Iterator
                     let i = (self.bezier_curve_iteration_function)(curve);
 
                     // begin iterating over that
-                    self.bezier_curve_iter = Some(i);
+                    *self.front_bezier_curve_iter(from_front) = Some(i);
                 }
             }
         }
+    }
+}
+
+impl<I: Iterator<Item = PathSegment>, B: Iterator<Item = Point>> Iterator
+    for PathSegmentsToPoints<I, B>
+{
+    type Item = Point;
+
+    #[inline]
+    fn next(&mut self) -> Option<Point> {
+        self.next_impl(true, Fuse::next, B::next)
     }
 
     #[inline]
@@ -332,10 +488,10 @@ impl<I: Iterator<Item = PathSegment>, B: Iterator<Item = Point>> Iterator
         // we can't give an upper bound, as the bezier curve iteration contains an unpredictable number of
         // points
         let (mut lower, _) = self.inner_pathseg_iter.size_hint();
-        if self.prev_segment.is_none() {
+        if self.front_prev_segment.is_none() {
             lower = lower.saturating_sub(1);
         }
-        if let Some(ref bci) = self.bezier_curve_iter {
+        if let Some(ref bci) = self.front_bezier_curve_iter {
             let (bci_lower, _) = bci.size_hint();
             lower = lower.saturating_add(bci_lower);
         }
@@ -348,4 +504,15 @@ impl<I: Iterator<Item = PathSegment>, B: Iterator<Item = Point>> Iterator
 impl<I: Iterator<Item = PathSegment>, B: Iterator<Item = Point>> FusedIterator
     for PathSegmentsToPoints<I, B>
 {
+}
+
+impl<
+        I: Iterator<Item = PathSegment> + DoubleEndedIterator,
+        B: Iterator<Item = Point> + DoubleEndedIterator,
+    > DoubleEndedIterator for PathSegmentsToPoints<I, B>
+{
+    #[inline]
+    fn next_back(&mut self) -> Option<Point> {
+        self.next_impl(false, Fuse::next_back, B::next_back)
+    }
 }

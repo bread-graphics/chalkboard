@@ -4,7 +4,7 @@ use crate::{
     color::Color,
     fill::FillRule,
     geometry::{Angle, BezierCurve, GeometricArc, Line, Point, Rectangle},
-    path::{Path, PathSegment, PathSegmentType},
+    path::{Path, PathSegment, PathSegmentType, PathSlice},
 };
 use std::{array::IntoIter as ArrayIter, iter};
 
@@ -50,58 +50,79 @@ pub trait Surface {
 
     /// Draw a path.
     #[inline]
-    fn draw_path(&mut self, path: Path) -> crate::Result {
-        let lines = path.into_lines();
+    fn draw_path(&mut self, path: &PathSlice) -> crate::Result {
+        let lines: Vec<Line> = path.iter_lines().collect();
+        self.draw_lines(&lines)
+    }
+    /// Draw an owned path.
+    #[inline]
+    fn draw_path_owned(&mut self, path: Path) -> crate::Result {
+        let lines: Vec<Line> = path.into_iter_lines().collect();
+        self.draw_lines(&lines)
+    }
+    /// Draw several paths.
+    #[inline]
+    fn draw_paths(&mut self, paths: &[Path]) -> crate::Result {
+        let lines: Vec<Line> = paths.iter().flat_map(|path| path.iter_lines()).collect();
+        self.draw_lines(&lines)
+    }
+    /// Draw several paths, if we own the paths.
+    #[inline]
+    fn draw_paths_owned(&mut self, paths: Vec<Path>) -> crate::Result {
+        let lines: Vec<Line> = paths
+            .into_iter()
+            .flat_map(|path| path.into_iter_lines())
+            .collect();
         self.draw_lines(&lines)
     }
 
     /// Draw a bezier curve.
     #[inline]
     fn draw_bezier_curve(&mut self, curve: BezierCurve) -> crate::Result {
-        let lines: Vec<Line> = curve.into_lines().collect();
-        self.draw_lines(&lines)
+        // Although we could implement this in terms of draw_lines(), most Surfaces that are actually used have
+        // optimizations to make drawing paths faster. This is a gamble.
+        let path = Path::from(curve);
+        self.draw_path_owned(path)
     }
-
     /// Draw several bezier curves. In many cases this is more efficient than drawing a single curve in a loop.
     #[inline]
     fn draw_bezier_curves(&mut self, curves: &[BezierCurve]) -> crate::Result {
-        let lines: Vec<Line> = curves
-            .iter()
-            .copied()
-            .flat_map(|curve| curve.into_lines())
-            .collect();
-        self.draw_lines(&lines)
+        let paths: Vec<Path> = curves.iter().copied().map(|curve| curve.into()).collect();
+        self.draw_paths_owned(paths)
     }
 
     /// Draw a rectangle.
     #[inline]
     fn draw_rectangle(&mut self, x1: i32, y1: i32, x2: i32, y2: i32) -> crate::Result {
-        let lines: [Line; 4] = [
-            Line { x1, y1, x2, y2: y1 },
-            Line { x1: x2, y1, x2, y2 },
-            Line { x1, y1: y2, x2, y2 },
-            Line { x1, y1, x2: x1, y2 },
-        ];
+        let path = Path::polyline([
+            Point { x: x1, y: y1 },
+            Point { x: x2, y: y1 },
+            Point { x: x2, y: y2 },
+            Point { x: x2, y: y1 },
+            Point { x: x1, y: y1 },
+        ]);
 
-        self.draw_lines(&lines)
+        self.draw_path_owned(path)
     }
 
     /// Draw several rectangles. In many cases this is more efficient than drawing a single rectangle in a loop.
     #[inline]
     fn draw_rectangles(&mut self, rects: &[Rectangle]) -> crate::Result {
-        let lines: Vec<Line> = rects
+        let paths: Vec<Path> = rects
             .iter()
             .copied()
-            .flat_map(|Rectangle { x1, y1, x2, y2 }| {
-                ArrayIter::new([
-                    Line { x1, y1, x2, y2: y1 },
-                    Line { x1: x2, y1, x2, y2 },
-                    Line { x1, y1: y2, x2, y2 },
-                    Line { x1, y1, x2: x1, y2 },
+            .map(|Rectangle { x1, y1, x2, y2 }| {
+                Path::polyline([
+                    Point { x: x1, y: y1 },
+                    Point { x: x2, y: y1 },
+                    Point { x: x2, y: y2 },
+                    Point { x: x2, y: y1 },
+                    Point { x: x1, y: y1 },
                 ])
             })
             .collect();
-        self.draw_lines(&lines)
+
+        self.draw_paths_owned(paths)
     }
 
     /// Draw an arc.

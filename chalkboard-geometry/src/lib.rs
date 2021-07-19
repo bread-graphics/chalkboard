@@ -19,16 +19,25 @@ extern crate std;
 mod angle;
 pub use angle::*;
 
+mod arc;
+pub use arc::*;
+
+mod color;
+pub use color::*;
+
 mod curve;
 pub use curve::*;
 
 mod intensity;
 pub use intensity::*;
 
+mod outline;
+pub use outline::*;
+
 mod path;
 pub use path::*;
 
-use core::cmp;
+use core::{cmp, ops};
 
 #[cfg(not(feature = "std"))]
 use micromath::F32Ext;
@@ -45,9 +54,35 @@ pub struct Point {
 
 impl Point {
     /// Get the distance from this point to another point.
+    #[allow(clippy::cast_precision_loss)]
     #[inline]
+    #[must_use]
     pub fn distance_to(self, other: Point) -> f32 {
         ((self.x as f32 - other.x as f32).powi(2) + (self.y as f32 - other.y as f32).powi(2)).sqrt()
+    }
+}
+
+impl ops::Add for Point {
+    type Output = Point;
+
+    #[inline]
+    fn add(self, other: Point) -> Point {
+        Point {
+            x: self.x + other.x,
+            y: self.y + other.y,
+        }
+    }
+}
+
+impl ops::Mul<i32> for Point {
+    type Output = Point;
+
+    #[inline]
+    fn mul(self, rhs: i32) -> Point {
+        Point {
+            x: self.x * rhs,
+            y: self.y * rhs,
+        }
     }
 }
 
@@ -122,6 +157,14 @@ impl Line {
             || (matches!(o2, Orientation::Colinear) && self.contains_point(p4))
             || (matches!(o3, Orientation::Colinear) && other.contains_point(p1))
             || (matches!(o4, Orientation::Colinear) && other.contains_point(p2))
+    }
+
+    /// The angle of this line.
+    #[inline]
+    #[must_use]
+    pub fn angle(self) -> Angle {
+        Angle::from_radians(((self.y2 - self.y1) as f32 / (self.x2 - self.x1) as f32).atan())
+            .unwrap_or(Angle::QUARTER_CIRCLE)
     }
 }
 

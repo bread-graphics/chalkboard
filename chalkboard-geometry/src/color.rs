@@ -1,6 +1,6 @@
 // MIT/Apache2 License
 
-use crate::Intensity;
+use super::Intensity;
 
 /// A four-element color.
 #[derive(Debug, Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]

@@ -22,6 +22,7 @@ impl Intensity {
     ///
     /// Behavior is undefined if `inner` is not a number, or outside of the range [0, 1].
     #[allow(unused_unsafe)]
+    #[must_use]
     #[inline]
     pub const unsafe fn new_unchecked(inner: f32) -> Intensity {
         Intensity {
@@ -31,6 +32,7 @@ impl Intensity {
 
     /// Create a new `Intensity`. If the inner value does not meet the invariants mentioned above, this function
     /// returns `None`.
+    #[must_use]
     #[inline]
     pub fn new(inner: f32) -> Option<Intensity> {
         if inner.is_nan() || inner < 0.0 || inner > 1.0 {
@@ -43,12 +45,14 @@ impl Intensity {
     }
 
     /// Get the inner value of the `Intensity`.
+    #[must_use]
     #[inline]
     pub fn into_inner(self) -> f32 {
         self.inner.into_inner()
     }
 
     /// Clamp this value to a compatible integer value.
+    #[must_use]
     #[inline]
     pub fn clamp<N: Bounded + Copy + ops::Sub + 'static>(self) -> N
     where
@@ -59,12 +63,14 @@ impl Intensity {
     }
 
     /// Clamp this value to a `u8`.
+    #[must_use]
     #[inline]
     pub fn clamp_u8(self) -> u8 {
         self.clamp()
     }
 
     /// Clamp this value to a `u16`.
+    #[must_use]
     #[inline]
     pub fn clamp_u16(self) -> u16 {
         self.clamp()

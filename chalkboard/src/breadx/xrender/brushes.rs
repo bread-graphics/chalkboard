@@ -14,7 +14,7 @@
 
 use super::{FillRuleKey, MaybePixmapPicture};
 use breadx::{
-    auto::render::Repeat,
+    auto::render::{Repeat, Transform},
     prelude::*,
     render::{Pictformat, PictureParameters, RenderDisplay},
 };
@@ -96,8 +96,79 @@ impl Brushes {
 
                     // create the gradient proper
                     let grad = dpy.create_linear_gradient(p1, p2, stops, color)?;
-                    v.insert(grad);
+
+                    v.insert(Collected {
+                        usage: 0,
+                        inner: grad.into(),
+                    });
                     Ok(grad)
+                }
+                FillRuleKey::RadialGradient(grad, rect) => {
+                    // get the dimensions of the radius gradient
+                    let Rectangle { x1, y1, x2, y2 } = rect;
+                    let width = (x2 - x1).abs();
+                    let height = (y2 - y1).abs();
+                    let radius = double_to_fixed(width as f64);
+                    let scaling = (height as f64) / (width as f64);
+
+                    // get the center point
+                    let c = radius / 2;
+                    let cp = Pointfix { x: c, y: c };
+
+                    let (stops, color) = gradient_to_stops_and_color(grad);
+
+                    // create the basic radial gradient
+                    let radial =
+                        dpy.create_radial_gradient(cp.clone(), cp, 0, radius, stops, color)?;
+
+                    // apply a transform that scales it to fit the width/height
+                    if width != height {
+                        radial.set_transform(Transform {
+                            matrix11: 1 << 16,
+                            matrix22: double_to_fixed(scaling),
+                            matrix33: 1 << 16,
+                            ..Default::default()
+                        })
+                    }
+
+                    v.insert(Collected {
+                        usage: 0,
+                        inner: radial.into(),
+                    });
+                    Ok(radial)
+                }
+                FillRuleKey::ConicalGradient(grad, rect) => {
+                    // get the dimensions of the radius gradient
+                    let Rectangle { x1, y1, x2, y2 } = rect;
+                    let width = (x2 - x1).abs();
+                    let height = (y2 - y1).abs();
+                    let radius = double_to_fixed(width as f64);
+                    let scaling = (height as f64) / (width as f64);
+
+                    // get the center point
+                    let c = radius / 2;
+                    let cp = Pointfix { x: c, y: c };
+
+                    let (stops, color) = gradient_to_stops_and_color(grad);
+
+                    // create the basic conical gradient
+                    let conical = dpy.create_conical_gradient(cp, 0, stops, color)?;
+
+                    // apply a transform that scales it to fit the width/height
+                    if width != height {
+                        conical.set_transform(Transform {
+                            matrix11: 1 << 16,
+                            matrix22: double_to_fixed(scaling),
+                            matrix33: 1 << 16,
+                            ..Default::default()
+                        })
+                    }
+
+                    v.insert(Collected {
+                        usage: 0,
+                        inner: conical.into(),
+                    });
+                    Ok(radial)
                 }
             },
         }

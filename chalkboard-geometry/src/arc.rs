@@ -1,6 +1,7 @@
 // MIT/Apache2 License
 
-use super::{polyline, Angle};
+use super::{polyline, Angle, Line, Point};
+use core::cmp;
 
 #[cfg(feature = "std")]
 use super::BezierCurve;
@@ -71,17 +72,19 @@ impl GeometricArc {
         // we'll create N line segments
         // TODO: figure out a better N
         let n = cmp::min(self.x2 - self.x1, self.y2 - self.y1) as f32; // approx. perimeter divided by pi
-        let n = n * (self.start.radians() + self.end.radians()) * 0.5;
+        let n = n.abs() * (self.start.radians() + self.end.radians()) * 0.5;
         let interval = 1f32 / n;
+
         let xc = (self.x2 as f32 - self.x1 as f32) / 2f32;
         let yc = (self.y2 as f32 - self.y1 as f32) / 2f32;
-        let radius = self.x2 as f32 - xc;
+        let xradius = self.x2 as f32 - xc;
+        let yradius = self.y2 as f32 - yc;
 
         (0..n as usize).map(move |i| {
             let angle = ((i / n as usize) as f32 * self.end.radians()) + self.start.radians();
             Point {
-                x: (xc + (radius * angle.cos())) as i32,
-                y: (yc + (radius * angle.sin())) as i32,
+                x: (xc + (xradius * angle.cos())) as i32,
+                y: (yc + (yradius * angle.sin())) as i32,
             }
         })
     }

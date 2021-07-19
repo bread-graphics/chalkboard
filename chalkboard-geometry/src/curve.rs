@@ -1,5 +1,7 @@
 // MIT/Apache2 License
 
+#![allow(clippy::module_name_repetitions)]
+
 use super::{polyline, Line, Point};
 
 #[cfg(not(feature = "std"))]
@@ -20,6 +22,8 @@ pub struct BezierCurve {
 
 impl BezierCurve {
     /// Evaluate the bezier curve at a certain `t`.
+    #[allow(clippy::cast_precision_loss)]
+    #[allow(clippy::cast_possible_truncation)]
     #[inline]
     fn eval_at(self, t: f32) -> Point {
         let t2 = t * t;
@@ -44,6 +48,8 @@ impl BezierCurve {
     }
 
     /// Get the approximate number of segments we need to represent the bezier curve.
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::cast_sign_loss)]
     #[inline]
     fn num_segments(self) -> usize {
         let approx_length = self.start.distance_to(self.control1)
@@ -53,10 +59,11 @@ impl BezierCurve {
     }
 
     /// Get an iterator over the points that make up this curve.
+    #[allow(clippy::cast_precision_loss)]
     #[inline]
     pub fn into_points(self) -> impl Iterator<Item = Point> {
         let num_segments = self.num_segments();
-        let interval = 1f32 / (num_segments as f32);
+        let interval = 1_f32 / (num_segments as f32);
 
         (0..num_segments).map(move |i| {
             let t = (i as f32 + 1.0) * interval;
