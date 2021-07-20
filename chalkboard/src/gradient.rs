@@ -1,6 +1,6 @@
 // MIT/Apache2 License
 
-use crate::{color::Color, intensity::Intensity};
+use crate::{Color, Intensity};
 use std::{
     borrow::Cow,
     iter::FromIterator,
@@ -25,14 +25,14 @@ impl<'a> Gradient<'a> {
     /// Behavior is undefined if the `Cow` contains no elements, or if the elements in the `Cow` are not sorted
     /// by their `position` field.
     #[inline]
-    pub unsafe fn new_unchecked(colors: Cow<'_, [ColorStop]>) -> Gradient<'a> {
+    pub unsafe fn new_unchecked(colors: Cow<'a, [ColorStop]>) -> Gradient<'a> {
         Gradient { colors }
     }
 
     /// Creates a new gradient from an item that can be converted into a `Cow<'_, [ColorStop]>`. If the item is
     /// empty, this returns `None`. Note that the elements are sorted before the `Gradient` is returned.
     #[inline]
-    pub fn new<Colors: Into<Cow<'a, [ColorStop]>>>(colors: Colors) -> Option<Gradient> {
+    pub fn new<Colors: Into<Cow<'a, [ColorStop]>>>(colors: Colors) -> Option<Gradient<'a>> {
         let mut colors = colors.into();
         if colors.is_empty() {
             None

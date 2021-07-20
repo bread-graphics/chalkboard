@@ -1,10 +1,8 @@
 // MIT/Apache2 License
 
 use crate::{
-    color::Color,
-    fill::FillRule,
-    geometry::{Angle, BezierCurve, GeometricArc, Line, Point, Rectangle},
-    path::{Path, PathSegment, PathSegmentType, PathSlice},
+    fill::FillRule, Angle, BezierCurve, Color, GeometricArc, Line, Path, PathSegment,
+    PathSegmentType, PathSlice, Point, Rectangle,
 };
 use std::{array::IntoIter as ArrayIter, iter};
 
@@ -136,28 +134,20 @@ pub trait Surface {
         start: Angle,
         end: Angle,
     ) -> crate::Result {
-        let lines: Vec<Line> = GeometricArc {
+        self.draw_path_owned(Path::from(GeometricArc {
             x1,
             y1,
             x2,
             y2,
             start,
             end,
-        }
-        .into_lines()
-        .collect();
-        self.draw_lines(&lines)
+        }))
     }
 
     /// Draw several arcs.
     #[inline]
     fn draw_arcs(&mut self, arcs: &[GeometricArc]) -> crate::Result {
-        let lines: Vec<Line> = arcs
-            .iter()
-            .copied()
-            .flat_map(|arc| arc.into_lines())
-            .collect();
-        self.draw_lines(&lines)
+        self.draw_paths_owned(arcs.iter().copied().map(|arc| Path::from(arc)).collect())
     }
 
     /// Draw an ellipse.

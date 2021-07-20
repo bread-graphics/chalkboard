@@ -22,5 +22,6 @@ pub use surface::*;
 
 #[doc(inline)]
 pub use chalkboard_geometry::{
-    Angle, BezierCurve, Color, GeometricArc, Intensity, Line, Path, PathSlice, Point, Rectangle,
+    Angle, BezierCurve, Color, GeometricArc, Intensity, Line, Path, PathSegment, PathSegmentType,
+    PathSlice, Point, Rectangle,
 };

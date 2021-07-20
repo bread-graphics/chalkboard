@@ -2,6 +2,9 @@
 
 #![allow(clippy::excessive_precision, clippy::unreadable_literal)]
 
+#[cfg(feature = "std")]
+use approx::abs_diff_eq;
+
 use core::ops;
 use ordered_float::NotNan;
 
@@ -82,6 +85,14 @@ impl Angle {
     #[inline]
     pub fn degrees(self) -> f32 {
         self.radians() * core::f32::consts::FRAC_1_PI * 180.0
+    }
+
+    /// Tell if two angles are equal.
+    #[cfg(feature = "std")]
+    #[inline]
+    #[must_use]
+    pub fn approx_eq(self, other: Angle) -> bool {
+        abs_diff_eq!(self.radians(), other.radians())
     }
 }
 

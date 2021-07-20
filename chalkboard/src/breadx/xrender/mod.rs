@@ -1,20 +1,19 @@
 // MIT/Apache2 License
 
 use crate::{
-    color::Color,
     fill::FillRule,
-    geometry::{Angle, Line, Point, Rectangle},
     gradient::Gradient,
     surface::{Surface, SurfaceFeatures},
-    util::{singleton, DebugContainer},
+    util::DebugContainer,
+    Angle, Color, Line, Point, Rectangle,
 };
 use breadx::{
     auto::{
         render::{
             Color as XrColor, Fixed, Linefix, PictOp, Pictformat, Picture, Pointfix, Repeat,
-            Trapezoid,
+            Trapezoid, Triangle,
         },
-        xproto::Rectangle as XRectangle,
+        xproto::{Rectangle as XRectangle, Window},
     },
     display::{prelude::*, Display, DisplayBase},
     render::{double_to_fixed, tesselate_shape, PictureParameters, RenderDisplay, StandardFormat},
@@ -66,7 +65,7 @@ pub struct RenderBreadxSurface<'dpy, Dpy: ?Sized> {
     old_checked: bool,
 
     // drawable to create pixmaps on
-    parent: Drawable,
+    parent: Window,
 
     // the picture we draw on top of
     target: Picture,
@@ -110,9 +109,9 @@ impl<'dpy, Dpy: ?Sized> Drop for RenderBreadxSurface<'dpy, Dpy> {
 #[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
 pub(crate) enum FillRuleKey {
     Color(XrColor),
-    LinearGradient(Gradient, Angle, u32, u32),
-    RadialGradient(Gradient, u32, u32),
-    ConicalGradient(Gradient, u32, u32),
+    LinearGradient(Gradient<'static>, Angle, i32, i32),
+    RadialGradient(Gradient<'static>, i32, i32),
+    ConicalGradient(Gradient<'static>, i32, i32),
 }
 
 /// Residual from the RenderBreadxSurface, used to save space.
@@ -423,10 +422,11 @@ impl<'dpy, Dpy: ?Sized> RenderBreadxSurface<'dpy, Dpy> {
         let res = RenderResidual {
             mask: self.mask,
             solid: self.solid,
-            next_gc: self.next_gc,
             brushes: Some(self.brushes.take().expect("NPP")),
             width: self.width,
             height: self.height,
+            window_format: self.window_format,
+            a8_format: self.a8_format,
         };
         mem::forget(self);
         res
@@ -436,17 +436,16 @@ impl<'dpy, Dpy: ?Sized> RenderBreadxSurface<'dpy, Dpy> {
 impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
     /// Create a new RenderBreadxSurface from residiual leftover.
     #[inline]
-    pub fn from_residual<Target: Into<Drawable>>(
+    pub fn from_residual(
         display: &'dpy mut RenderDisplay<Dpy>,
         picture: Picture,
-        parent: Target,
+        parent: Window,
         width: u16,
         height: u16,
         mut residual: RenderResidual,
     ) -> crate::Result<Self> {
         let old_checked = display.inner_mut().checked();
         display.inner_mut().set_checked(false);
-        let parent: Drawable = parent.into();
 
         // if the width and height doesn't match up, create a new mask
         if width != residual.width || height != residual.height {
@@ -480,17 +479,30 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
     }
 
     #[inline]
-    pub fn new<Target: Into<Drawable>>(
+    pub fn new(
         display: &'dpy mut RenderDisplay<Dpy>,
         picture: Picture,
-        parent: Target,
+        parent: Window,
         width: u16,
         height: u16,
         depth: u8,
     ) -> crate::Result<Self> {
-        let parent: Drawable = parent.into();
         let mask = PixmapPicture::new_a8(display, width, height, XCLR_TRANS, parent, false)?;
         let solid = PixmapPicture::new_a8(display, 1, 1, XCLR_WHITE, parent, true)?;
+
+        let window_attrs = parent.window_attributes_immediate(display)?;
+        let window_visual = window_attrs.visual;
+        let window_visual = display
+            .visual_id_to_visual(window_visual)
+            .expect("Window visual does not exist");
+        let window_format = display
+            .find_visual_format(window_visual)
+            .expect("Window format does not exist");
+
+        let a8_format = display
+            .find_standard_format(StandardFormat::A8)
+            .expect("No A8 format");
+
         Self::from_residual(
             display,
             picture,
@@ -500,11 +512,12 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
             RenderResidual {
                 mask,
                 solid,
-                stroke,
-                brushes: Some(HashMap::new()),
+                brushes: Some(Brushes::new()),
                 width,
                 height,
                 depth,
+                window_format,
+                a8_format,
             },
         )
     }
@@ -536,19 +549,23 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
         self.brushes
             .as_mut()
             .unwrap()
-            .fill(FillRule::Solid(self.stroke_color))
+            .fill(FillRule::SolidColor(self.stroke_color))
     }
 
     /// Get the picture necessary to act as a source for a fill operation.
     #[inline]
-    fn fill_picture(&mut self, rect: Rectangle) -> crate::Result<Picture> {
+    fn fill_picture(&mut self, width: i32, height: i32) -> crate::Result<Picture> {
         let key = match &self.fill {
             FillRule::SolidColor(clr) => FillRuleKey::Color(*clr),
             FillRule::LinearGradient(grad, angle) => {
-                FillRuleKey::LinearGradient(grad.clone(), *angle, rect)
+                FillRuleKey::LinearGradient(grad.clone(), *angle, width, height)
             }
-            FillRule::RadialGradient(grad) => FillRuleKey::RadialGradient(grad.clone(), rect),
-            FillRule::ConicalGradient(grad) => FillRuleKey::ConicalGradient(grad.clone(), rect),
+            FillRule::RadialGradient(grad) => {
+                FillRuleKey::RadialGradient(grad.clone(), width, height)
+            }
+            FillRule::ConicalGradient(grad) => {
+                FillRuleKey::ConicalGradient(grad.clone(), width, height)
+            }
         };
 
         self.brushes.as_mut().unwrap().fill(key)
@@ -614,9 +631,10 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
     #[inline]
     fn draw_lines_internal<I: IntoIterator<Item = Line>>(&mut self, lines: I) -> crate::Result {
         let src = self.stroke_picture()?;
+        let line_width = self.line_width;
         let triangles: Vec<Triangle> = lines
             .into_iter()
-            .flat_map(|l| line_to_triangles(l))
+            .flat_map(|l| line_to_triangles(l, line_width as _))
             .collect();
         self.fill_triangles(triangles, src, 0, 0)
     }
@@ -644,24 +662,34 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
         }
 
         // slow path: convert every rectangle to two triangles and then composite it
-        let rectangles: Vec<Rectangle> = rects
+        let rects: Vec<Rectangle> = rects
             .into_iter()
-            .filter(|Rectangle { x1, y1, x2, y2 }| x1 != y1 && x2 != y2)
+            .filter(|Rectangle { x1, y1, x2, y2 }| x1 != x2 && y1 != y2)
             .collect();
-        if rectangles.is_empty() {
+        if rects.is_empty() {
             return Ok(());
         }
 
-        // get the min x and min y
+        // get the min/max x and min/max y
         let min_x = rects
             .iter()
             .map(|Rectangle { x1, x2, .. }| cmp::min(x1, x2))
             .min()
             .unwrap();
+        let max_x = rects
+            .iter()
+            .map(|Rectangle { x1, x2, .. }| cmp::max(x1, x2))
+            .max()
+            .unwrap();
         let min_y = rects
             .iter()
             .map(|Rectangle { y1, y2, .. }| cmp::min(y1, y2))
             .min()
+            .unwrap();
+        let max_y = rects
+            .iter()
+            .map(|Rectangle { y1, y2, .. }| cmp::max(y1, y2))
+            .max()
             .unwrap();
 
         let triangles: Vec<Triangle> = rects
@@ -687,99 +715,9 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
             })
             .collect();
 
-        let fill = self.fill_picture()?;
+        let fill = self.fill_picture(max_x - min_x, max_y - min_y)?;
         self.fill_triangles(triangles, fill, -min_x as i16, -min_y as i16)
     }
-}
-
-// helper function to get stops and color from a gradient
-#[inline]
-fn gradient_to_stops_and_color(grad: &Gradient) -> (TinyVec<[Fixed; 6]>, TinyVec<[XrColor; 3]>) {
-    grad.iter()
-        .map(|r| {
-            (
-                double_to_fixed(r.position.into_inner().into()),
-                cvt_color(r.color),
-            )
-        })
-        .unzip()
-}
-
-// helper function to get points on the rectangle corresponding to angles
-#[inline]
-fn rectangle_angle(width: f64, height: f64, angle: Angle) -> (Pointfix, Pointfix) {
-    // fast paths
-    if angle.approx_eq(Angle::ZERO) || angle.approx_eq(Angle::FULL_CIRCLE) {
-        let h2 = double_to_fixed(height / 2.0);
-        return (
-            Pointfix { x: 0, y: h2 },
-            Pointfix {
-                x: double_to_fixed(width),
-                y: h2,
-            },
-        );
-    } else if angle.approx_eq(Angle::QUARTER_CIRCLE) {
-        let w2 = double_to_fixed(width / 2.0);
-        return (
-            Pointfix { x: w2, y: 0 },
-            Pointfix {
-                x: w2,
-                y: double_to_fixed(height),
-            },
-        );
-    } else if angle.approx_eq(Angle::HALF_CIRCLE) {
-        let h2 = double_to_fixed(height / 2.0);
-        return (
-            Pointfix { x: 0, y: h2 },
-            Pointfix {
-                x: double_to_fixed(width),
-                y: h2,
-            },
-        );
-    } else if angle.approx_eq(Angle::THREE_QUARTERS_CIRCLE) {
-        let w2 = double_to_fixed(width / 2.0);
-        return (
-            Pointfix {
-                x: w2,
-                y: double_to_fixed(height),
-            },
-            Pointfix { x: w2, y: 0 },
-        );
-    }
-
-    // slow path: calculate a point going from the center of the rectangle to the edges. we can do this with
-    // the knowledge that the slope, which we can calculate via atan(angle), is y/x. given the center, we can use
-    // this to calculate the x at y=height and the y at x=width, and figure out which one fits
-    // then do the same at y = 0 and x = 0
-    let slope = angle.radians().atan() as f64;
-    let xc = width / 2.0;
-    let yc = height / 2.0;
-
-    let mut calc_point_at = move |xfix: f64, yfix: f64| -> Pointfix {
-        // (y - y1) = m*(x - x1) -> y = y1 + m*(x - x1), where x1 and y1 are the center and x = width or 0
-        let y_est = yc + (slope * (xfix - xc));
-        // x = x1 + (y - y1)/m
-        let x_est = xc + ((yfix - yc) / slope);
-        // calculate the results of the estimate
-        let y_est_x = xc + ((yfix - y_est) / slope);
-        let x_est_y = yc + (slope * (xfix - x_est));
-
-        // one of these estimates will be larger than the rectangle proper, so account for that and choose which
-        // one works
-        if y_est_x > width {
-            Pointfix {
-                x: double_to_fixed(x_est),
-                y: double_to_fixed(x_est_y),
-            }
-        } else {
-            Pointfix {
-                x: double_to_fixed(y_est_x),
-                y: double_to_fixed(y_est),
-            }
-        }
-    };
-
-    (calc_point_at(0.0, 0.0), calc_point_at(width, height))
 }
 
 #[cfg(feature = "async")]
@@ -915,7 +853,7 @@ impl<'dpy, Dpy: Display + ?Sized> Surface for RenderBreadxSurface<'dpy, Dpy> {
         self.draw_lines_internal(lines.iter().copied())
     }
 
-    // other line-drawing mechanisms should just use draw_lines as a front
+    // TODO: optimized path drawing
 
     #[inline]
     fn fill_polygon(&mut self, points: &[Point]) -> crate::Result {
@@ -931,16 +869,14 @@ impl<'dpy, Dpy: Display + ?Sized> Surface for RenderBreadxSurface<'dpy, Dpy> {
         let y1 = yiter.clone().min().unwrap();
         let y2 = yiter.max().unwrap();
 
-        let rect = Rectangle { x1, y1, x2, y2 };
-
         // translate shapes to polygons
         let points = points.iter().copied().map(|Point { x, y }| Pointfix {
             x: x << 16,
             y: y << 16,
         });
-        let traps: Vec<Trapezoid> = tesselate_shape(points);
-        let src = self.fill_picture(rect)?;
-        self.fill_trapezoids(&traps, src)
+        let triangles: Vec<Triangles> = tesselate_shape(points);
+        let src = self.fill_picture(x2 - x1, y2 - y1)?;
+        self.fill_triangles(triangles, src, x1, y1)
     }
 
     #[inline]

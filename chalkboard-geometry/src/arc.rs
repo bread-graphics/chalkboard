@@ -6,7 +6,7 @@ use core::cmp;
 #[cfg(feature = "std")]
 use super::BezierCurve;
 
-/// A geometric arc, or a slice of a circle. It is represented by
+/// A geometric arc, or a slice of a circle. It is represented by a rectangle and its two bounding angles.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct GeometricArc {
     pub x1: i32,

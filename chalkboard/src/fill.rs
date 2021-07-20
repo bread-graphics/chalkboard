@@ -1,6 +1,6 @@
 // MIT/Apache2 License
 
-use crate::{color::Color, geometry::Angle, gradient::Gradient};
+use crate::{gradient::Gradient, Angle, Color};
 
 /// Defines how a particular space is filled.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]

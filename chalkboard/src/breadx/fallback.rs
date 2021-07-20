@@ -4,11 +4,10 @@
 //! usually slower than their XRender or GLX equivalents.
 
 use crate::{
-    color::Color,
     fill::FillRule,
-    geometry::{Angle, GeometricArc, Line, Point, Rectangle},
     surface::{Surface, SurfaceFeatures},
     util::clamp,
+    Angle, Color, GeometricArc, Line, Point, Rectangle,
 };
 use breadx::{
     auto::xproto::{
