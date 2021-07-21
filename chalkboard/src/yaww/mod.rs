@@ -3,11 +3,10 @@
 #![cfg(windows)]
 
 use crate::{
-    color::Color,
     fill::FillRule,
-    geometry::{Angle, GeometricArc, Line, Point, Rectangle},
     surface::{Surface, SurfaceFeatures},
     util::DebugContainer,
+    Angle, Color, GeometricArc, Line, Point, Rectangle,
 };
 use std::{
     array::IntoIter as ArrayIter,

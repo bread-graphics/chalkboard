@@ -35,7 +35,7 @@ impl<'a> Gradient<'a> {
     #[inline]
     pub fn new<Colors: Into<Cow<'a, [ColorStop]>>>(colors: Colors) -> Option<Gradient<'a>> {
         let mut colors = colors.into();
-        if colors.is_empty() || !is_sorted(&colors) { 
+        if colors.is_empty() || !is_sorted(&colors) {
             None
         } else {
             Some(Gradient { colors })
@@ -104,11 +104,12 @@ pub struct ColorStop {
 /// Tell if this is sorted.
 #[inline]
 fn is_sorted(stops: &[ColorStop]) -> bool {
-    // port of https://doc.rust-lang.org/src/core/iter/traits/iterator.rs.html#3349-3352 
+    // port of https://doc.rust-lang.org/src/core/iter/traits/iterator.rs.html#3349-3352
 
     let mut iter = stops.iter();
     let mut last = match iter.next() {
-        Some(last) => last, None => return true,
+        Some(last) => last,
+        None => return true,
     };
 
     iter.all(|curr| {

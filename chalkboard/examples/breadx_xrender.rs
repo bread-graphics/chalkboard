@@ -34,6 +34,8 @@ fn main() -> Result {
     let wdw = conn.intern_atom_immediate("WM_DELETE_WINDOW", false)?;
     window.set_wm_protocols(&mut conn, &[wdw])?;
 
+    let depth = window.geometry_immediate(&mut conn)?.depth;
+
     // initialize xrender
     let mut conn = RenderDisplay::new(conn, 0, 10).map_err(|(_, e)| e)?;
 
@@ -64,7 +66,7 @@ fn main() -> Result {
             Event::Expose(_) => {
                 // create the surface
                 let mut surface = match residual.take() {
-                    None => RenderBreadxSurface::new(&mut conn, picture, window, width, height)?,
+                    None => RenderBreadxSurface::new(&mut conn, picture, window, width, height, depth)?,
                     Some(residual) => RenderBreadxSurface::from_residual(
                         &mut conn, picture, window, width, height, residual,
                     )?,
