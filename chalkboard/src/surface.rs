@@ -183,7 +183,7 @@ pub trait Surface {
         // if the path isn't closed, close it
         path.close();
 
-        let points: Vec<Point> = path.into_points().collect();
+        let points: Vec<Point> = path.into_iter_points().collect();
         self.fill_polygon(&points)
     }
 

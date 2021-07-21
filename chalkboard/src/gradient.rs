@@ -79,6 +79,19 @@ impl<'a> Gradient<'a> {
             },
         }
     }
+
+    /// Clone this `Gradient<'_>` into a `Gradient<'static>`.
+    #[inline]
+    pub fn to_owned(&self) -> Gradient<'static> {
+        match self.colors {
+            Cow::Borrowed(ref colors) => Gradient {
+                colors: Cow::Owned(colors.to_vec()),
+            },
+            Cow::Owned(ref colors) => Gradient {
+                colors: Cow::Owned(colors.clone()),
+            },
+        }
+    }
 }
 
 /// A color stop in a color gradient.

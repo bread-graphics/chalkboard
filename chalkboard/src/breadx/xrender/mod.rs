@@ -425,6 +425,7 @@ impl<'dpy, Dpy: ?Sized> RenderBreadxSurface<'dpy, Dpy> {
             brushes: Some(self.brushes.take().expect("NPP")),
             width: self.width,
             height: self.height,
+            depth: self.depth,
             window_format: self.window_format,
             a8_format: self.a8_format,
         };
@@ -451,7 +452,7 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
         if width != residual.width || height != residual.height {
             residual.mask.free(display.inner_mut())?;
             residual.mask =
-                PixmapPicture::new_a8(display, width, height, XCLR_TRANS, parent, false)?;
+                PixmapPicture::new_a8(display, width, height, XCLR_TRANS, parent.into(), false)?;
         }
 
         let this = Self {
@@ -487,8 +488,8 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
         height: u16,
         depth: u8,
     ) -> crate::Result<Self> {
-        let mask = PixmapPicture::new_a8(display, width, height, XCLR_TRANS, parent, false)?;
-        let solid = PixmapPicture::new_a8(display, 1, 1, XCLR_WHITE, parent, true)?;
+        let mask = PixmapPicture::new_a8(display, width, height, XCLR_TRANS, parent.into(), false)?;
+        let solid = PixmapPicture::new_a8(display, 1, 1, XCLR_WHITE, parent.into(), true)?;
 
         let window_attrs = parent.window_attributes_immediate(display)?;
         let window_visual = window_attrs.visual;
@@ -546,29 +547,38 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
     #[inline]
     fn stroke_picture(&mut self) -> crate::Result<Picture> {
         // lines are just special fill polygons, so we take the fill picture
-        self.brushes
-            .as_mut()
-            .unwrap()
-            .fill(FillRule::SolidColor(self.stroke_color))
+        self.brushes.as_mut().unwrap().fill(
+            &mut self.display,
+            self.parent.into(),
+            self.depth,
+            self.window_format,
+            FillRuleKey::Color(self.stroke_color),
+        )
     }
 
     /// Get the picture necessary to act as a source for a fill operation.
     #[inline]
     fn fill_picture(&mut self, width: i32, height: i32) -> crate::Result<Picture> {
         let key = match &self.fill {
-            FillRule::SolidColor(clr) => FillRuleKey::Color(*clr),
+            FillRule::SolidColor(clr) => FillRuleKey::Color(cvt_color(*clr)),
             FillRule::LinearGradient(grad, angle) => {
-                FillRuleKey::LinearGradient(grad.clone(), *angle, width, height)
+                FillRuleKey::LinearGradient(grad.to_owned(), *angle, width, height)
             }
             FillRule::RadialGradient(grad) => {
-                FillRuleKey::RadialGradient(grad.clone(), width, height)
+                FillRuleKey::RadialGradient(grad.to_owned(), width, height)
             }
             FillRule::ConicalGradient(grad) => {
-                FillRuleKey::ConicalGradient(grad.clone(), width, height)
+                FillRuleKey::ConicalGradient(grad.to_owned(), width, height)
             }
         };
 
-        self.brushes.as_mut().unwrap().fill(key)
+        self.brushes.as_mut().unwrap().fill(
+            &mut self.display,
+            self.parent.into(),
+            self.depth,
+            self.window_format,
+            key,
+        )
     }
 
     #[inline]
@@ -874,9 +884,9 @@ impl<'dpy, Dpy: Display + ?Sized> Surface for RenderBreadxSurface<'dpy, Dpy> {
             x: x << 16,
             y: y << 16,
         });
-        let triangles: Vec<Triangles> = tesselate_shape(points);
+        let triangles: Vec<Triangle> = tesselate_shape(points);
         let src = self.fill_picture(x2 - x1, y2 - y1)?;
-        self.fill_triangles(triangles, src, x1, y1)
+        self.fill_triangles(triangles, src, x1 as _, y1 as _)
     }
 
     #[inline]
@@ -980,7 +990,7 @@ impl<'dpy, Dpy: AsyncDisplay + ?Sized> Dropper<'dpy, Dpy> {
 }
 
 #[inline]
-fn cvt_color(color: Color) -> XrColor {
+pub(crate) fn cvt_color(color: Color) -> XrColor {
     let (red, green, blue, alpha) = color.clamp_u16();
     XrColor {
         red,

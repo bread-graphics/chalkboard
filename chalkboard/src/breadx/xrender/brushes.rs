@@ -12,16 +12,15 @@
 //!
 //! TODO: finish the algorithm
 
-use super::{FillRuleKey, MaybePixmapPicture};
-use crate::{Angle, gradient::Gradient};
-use approx::abs_diff_eq;
+use super::{cvt_color, FillRuleKey, MaybePixmapPicture};
+use crate::{gradient::Gradient, Angle};
 use breadx::{
     auto::{
-        render::{Repeat, Transform, Pointfix},
+        render::{Pointfix, Repeat, Transform, Fixed, Color as XrColor},
         xproto::Drawable,
     },
     prelude::*,
-    render::{Pictformat, Picture, PictureParameters, RenderDisplay, double_to_fixed},
+    render::{double_to_fixed, Pictformat, Picture, PictureParameters, RenderDisplay},
 };
 use std::collections::hash_map::{Entry, HashMap};
 use tinyvec::TinyVec;
