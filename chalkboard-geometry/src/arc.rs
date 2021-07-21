@@ -81,7 +81,7 @@ impl GeometricArc {
         let yradius = self.y2 as f32 - yc;
 
         (0..n as usize).map(move |i| {
-            let angle = ((i / n as usize) as f32 * self.end.radians()) + self.start.radians();
+            let angle = (i as f32 * interval * self.end.radians()) + self.start.radians();
             Point {
                 x: (xc + (xradius * angle.cos())) as i32,
                 y: (yc + (yradius * angle.sin())) as i32,

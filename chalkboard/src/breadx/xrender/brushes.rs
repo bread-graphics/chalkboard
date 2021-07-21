@@ -16,7 +16,7 @@ use super::{cvt_color, FillRuleKey, MaybePixmapPicture};
 use crate::{gradient::Gradient, Angle};
 use breadx::{
     auto::{
-        render::{Pointfix, Repeat, Transform, Fixed, Color as XrColor},
+        render::{Color as XrColor, Fixed, Pointfix, Repeat, Transform},
         xproto::Drawable,
     },
     prelude::*,
@@ -71,7 +71,7 @@ impl Brushes {
         key: FillRuleKey,
     ) -> crate::Result<Picture> {
         match self.brushes.entry(key) {
-            Entry::Occupied(o) => {
+            Entry::Occupied(mut o) => {
                 // increment the usage count of the instance
                 let usage = o.get().usage.saturating_add(1);
                 o.get_mut().usage = usage;
@@ -106,7 +106,8 @@ impl Brushes {
                     let (stops, color) = gradient_to_stops_and_color(grad);
 
                     // create the gradient proper
-                    let grad = dpy.create_linear_gradient(p1, p2, stops, color)?;
+                    let grad =
+                        dpy.create_linear_gradient(p1, p2, stops.as_slice(), color.as_slice())?;
 
                     v.insert(Collected {
                         usage: 0,
@@ -126,8 +127,14 @@ impl Brushes {
                     let (stops, color) = gradient_to_stops_and_color(grad);
 
                     // create the basic radial gradient
-                    let radial =
-                        dpy.create_radial_gradient(cp.clone(), cp, 0, radius, stops, color)?;
+                    let radial = dpy.create_radial_gradient(
+                        cp.clone(),
+                        cp,
+                        0,
+                        radius,
+                        stops.as_slice(),
+                        color.as_slice(),
+                    )?;
 
                     // apply a transform that scales it to fit the width/height
                     if width != height {
@@ -160,7 +167,8 @@ impl Brushes {
                     let (stops, color) = gradient_to_stops_and_color(grad);
 
                     // create the basic conical gradient
-                    let conical = dpy.create_conical_gradient(cp, 0, stops, color)?;
+                    let conical =
+                        dpy.create_conical_gradient(cp, 0, stops.as_slice(), color.as_slice())?;
 
                     // apply a transform that scales it to fit the width/height
                     if width != height {

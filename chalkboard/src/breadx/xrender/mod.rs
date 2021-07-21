@@ -681,22 +681,22 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
         }
 
         // get the min/max x and min/max y
-        let min_x = rects
+        let min_x = *rects
             .iter()
             .map(|Rectangle { x1, x2, .. }| cmp::min(x1, x2))
             .min()
             .unwrap();
-        let max_x = rects
+        let max_x = *rects
             .iter()
             .map(|Rectangle { x1, x2, .. }| cmp::max(x1, x2))
             .max()
             .unwrap();
-        let min_y = rects
+        let min_y = *rects
             .iter()
             .map(|Rectangle { y1, y2, .. }| cmp::min(y1, y2))
             .min()
             .unwrap();
-        let max_y = rects
+        let max_y = *rects
             .iter()
             .map(|Rectangle { y1, y2, .. }| cmp::max(y1, y2))
             .max()
@@ -884,7 +884,7 @@ impl<'dpy, Dpy: Display + ?Sized> Surface for RenderBreadxSurface<'dpy, Dpy> {
             x: x << 16,
             y: y << 16,
         });
-        let triangles: Vec<Triangle> = tesselate_shape(points);
+        let triangles: Vec<Triangle> = tesselate_shape(points).collect();
         let src = self.fill_picture(x2 - x1, y2 - y1)?;
         self.fill_triangles(triangles, src, x1 as _, y1 as _)
     }

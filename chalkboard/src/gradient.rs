@@ -3,6 +3,7 @@
 use crate::{Color, Intensity};
 use std::{
     borrow::Cow,
+    cmp::Ordering,
     iter::FromIterator,
     slice::{Iter as SliceIter, IterMut as SliceIterMut},
 };
@@ -34,10 +35,9 @@ impl<'a> Gradient<'a> {
     #[inline]
     pub fn new<Colors: Into<Cow<'a, [ColorStop]>>>(colors: Colors) -> Option<Gradient<'a>> {
         let mut colors = colors.into();
-        if colors.is_empty() {
+        if colors.is_empty() || !is_sorted(&colors) { 
             None
         } else {
-            colors.sort_by_key(|c| c.position);
             Some(Gradient { colors })
         }
     }
@@ -51,7 +51,7 @@ impl<'a> Gradient<'a> {
     /// Creates a mutable iterator over these values.
     #[inline]
     pub fn iter_mut(&mut self) -> SliceIterMut<'_, ColorStop> {
-        self.colors.iter_mut()
+        self.colors.to_mut().iter_mut()
     }
 
     /// Get a slice reference to the color stop values.
@@ -99,4 +99,24 @@ impl<'a> Gradient<'a> {
 pub struct ColorStop {
     pub color: Color,
     pub position: Intensity,
+}
+
+/// Tell if this is sorted.
+#[inline]
+fn is_sorted(stops: &[ColorStop]) -> bool {
+    // port of https://doc.rust-lang.org/src/core/iter/traits/iterator.rs.html#3349-3352 
+
+    let mut iter = stops.iter();
+    let mut last = match iter.next() {
+        Some(last) => last, None => return true,
+    };
+
+    iter.all(|curr| {
+        if let Ordering::Greater = last.position.cmp(&curr.position) {
+            return false;
+        }
+
+        last = curr;
+        true
+    })
 }
