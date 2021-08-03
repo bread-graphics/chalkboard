@@ -1,5 +1,31 @@
-[workspace]
-members = [
-    "chalkboard",
-    "chalkboard-geometry",
-]
+[package]
+name = "chalkboard"
+version = "0.1.0"
+authors = ["not_a_seagull <jtnunley01@gmail.com>"]
+edition = "2018"
+
+# general dependencies
+[dependencies]
+approx = "0.5"
+futures-lite = { version = "1.11", optional = true }
+log = "0.4"
+lyon_geom = "0.17"
+lyon_path = "0.17"
+lyon_tesselation = "0.17"
+ordered-float = "2.1"
+tinyvec = { version = "1.1", features = ["alloc"] }
+
+[dev-dependencies]
+env_logger = { version = "0.8", default-features = false, features = ["atty", "termcolor"] }
+
+[target.'cfg(unix)'.dependencies]
+breadx = { path="../../breadx", optional = true }
+
+[target.'cfg(windows)'.dependencies]
+yaww = { path = "../../yaww", optional = true }
+
+[features]
+default = ["breadx","xrender","yaww"]
+async = ["futures-lite", "breadx/async"]
+parking_lot = ["yaww/parking_lot"]
+xrender = ["breadx", "breadx/render"]
