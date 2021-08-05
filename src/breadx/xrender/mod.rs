@@ -5,7 +5,7 @@ use crate::{
     gradient::Gradient,
     surface::{Surface, SurfaceFeatures},
     util::DebugContainer,
-    Angle, Color, Line, Point, Rectangle,
+    Color,
 };
 use breadx::{
     auto::{
@@ -19,6 +19,8 @@ use breadx::{
     render::{double_to_fixed, tesselate_shape, PictureParameters, RenderDisplay, StandardFormat},
     Drawable, Pixmap,
 };
+use lyon_geom::{Angle, LineSegment, Point, Rect};
+use lyon_path::{PathSlice, Path};
 use std::{
     array::IntoIter as ArrayIter,
     cmp,
@@ -36,7 +38,7 @@ use futures_lite::future;
 mod brushes;
 use brushes::Brushes;
 
-const FEATURES: SurfaceFeatures = SurfaceFeatures { gradients: true };
+const FEATURES: SurfaceFeatures = SurfaceFeatures { gradients: true, floats: true };
 const XCLR_TRANS: XrColor = XrColor {
     red: 0,
     green: 0,
@@ -639,7 +641,7 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
     }
 
     #[inline]
-    fn draw_lines_internal<I: IntoIterator<Item = Line>>(&mut self, lines: I) -> crate::Result {
+    fn draw_lines_internal<I: IntoIterator<Item = LineSegment<f32>>>(&mut self, lines: I) -> crate::Result {
         let src = self.stroke_picture()?;
         let line_width = self.line_width;
         let triangles: Vec<Triangle> = lines
@@ -650,7 +652,7 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
     }
 
     #[inline]
-    fn fill_rectangles_internal<I: IntoIterator<Item = Rectangle>>(
+    fn fill_rectangles_internal<I: IntoIterator<Item = Rect<f32>>>(
         &mut self,
         rects: I,
     ) -> crate::Result {
@@ -705,10 +707,10 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
         let triangles: Vec<Triangle> = rects
             .into_iter()
             .flat_map(|Rectangle { x1, y1, x2, y2 }| {
-                let x1 = (x1 - min_x) << 16;
-                let y1 = (y1 - min_y) << 16;
-                let x2 = (x2 - min_x) << 16;
-                let y2 = (y2 - min_y) << 16;
+                let x1 = double_to_fixed(x1 - min_x);
+                let y1 = double_to_fixed(y1 - min_y);
+                let x2 = double_to_fixed(x2 - min_x);
+                let y2 = double_to_fixed(y2 - min_y);
 
                 ArrayIter::new([
                     Triangle {
@@ -854,8 +856,8 @@ impl<'dpy, Dpy: Display + ?Sized> Surface for RenderBreadxSurface<'dpy, Dpy> {
     }
 
     #[inline]
-    fn draw_line(&mut self, x1: i32, y1: i32, x2: i32, y2: i32) -> crate::Result {
-        self.draw_lines_internal(iter::once(Line { x1, y1, x2, y2 }))
+    fn draw_line(&mut self, x1: f32, y1: f32, x2: f32, y2: f32) -> crate::Result {
+        self.draw_lines_internal(iter::once(LineSegment { to:, x2, y2 }))
     }
 
     #[inline]
@@ -935,7 +937,7 @@ fn rect_to_trapezoid(rect: Rectangle) -> Trapezoid {
 }
 
 #[inline]
-fn line_to_triangles(line: Line, width: usize) -> impl Iterator<Item = Triangle> {
+fn line_to_triangles(line: LineSegment<f32>, width: usize) -> impl Iterator<Item = Triangle> {
     let width = width as f64;
     // figure out at which angle the line segment is at
     let angle = ((line.y2 - line.y1) as f64).atan2((line.x2 - line.x1) as f64);
@@ -945,27 +947,30 @@ fn line_to_triangles(line: Line, width: usize) -> impl Iterator<Item = Triangle>
     let x2 = line.x2 as f64;
     let y1 = line.y1 as f64;
     let y2 = line.y2 as f64;
+    
 
-    let rectangle: [Pointfix; 4] = [
-        Pointfix {
-            x: double_to_fixed(x1 + dx),
-            y: double_to_fixed(y1 + dy),
-        },
-        Pointfix {
-            x: double_to_fixed(x2 + dx),
-            y: double_to_fixed(y2 + dy),
-        },
-        Pointfix {
-            x: double_to_fixed(x2 - dx),
-            y: double_to_fixed(y2 - dy),
-        },
-        Pointfix {
-            x: double_to_fixed(x1 - dx),
-            y: double_to_fixed(y1 - dy),
-        },
-    ];
+    let t1 = double_to_fixed(x1 + dx);
+    let l1 = double_to_fixed(y1 + dy);
+    let b1 = double_to_fixed(x1 - dx);
+    let r1 = double_to_fixed(y1 - dy);
 
-    tesselate_shape(ArrayIter::new(rectangle))
+    let t2 = double_to_fixed(x2 + dx);
+    let l2 = double_to_fixed(y2 + dy);
+    let b2 = double_to_fixed(x2 - dx);
+    let r2 = double_to_fixed(y2 - dy);
+
+    ArrayIter::new([
+        Triangle {
+            p1: Pointfix { x: t1, y: l1 },
+            p2: Pointfix { x: t2, y: l2 },
+            p3: Pointfix { x: b1, y: r1 }, 
+        },
+        Triangle {
+            p1: Pointfix { x: t2, y: l2 },
+            p2: Pointfix { x: b2, y: r2 },
+            p3: Pointfix { x: b1, y: r1 },
+        },
+    ]) 
 }
 
 struct Dropper<'dpy, Dpy: ?Sized>(&'dpy Dpy);

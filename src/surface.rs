@@ -1,6 +1,6 @@
 // MIT/Apache2 License
 
-use crate::{fill::FillRule, path_from_curve, path_to_lines, Color};
+use crate::{fill::FillRule, path_from_curve, path_to_lines, Color, Ellipse};
 use lyon_geom::{Angle, Arc, CubicBezierSegment, LineSegment, Point, Rect};
 use lyon_path::{Event as PathEvent, Path, PathBuffer, PathBufferSlice, PathSlice};
 use std::{array::IntoIter as ArrayIter, iter};
@@ -208,25 +208,21 @@ pub trait Surface {
         )
     }
 
-    /*
         /// Draw several ellipses.
         #[inline]
-        fn draw_ellipses(&mut self, rects: &[Rectangle]) -> crate::Result {
-            let arcs: Vec<GeometricArc> = rects
+        fn draw_ellipses(&mut self, rects: &[Ellipse]) -> crate::Result {
+            let arcs: Vec<Arc<f32>> = rects
                 .iter()
                 .copied()
-                .map(|Rectangle { x1, y1, x2, y2 }| GeometricArc {
-                    x1,
-                    y1,
-                    x2,
-                    y2,
-                    start: Angle::ZERO,
-                    end: Angle::FULL_CIRCLE,
+                .map(|Ellipse { center, radii }| Arc {
+                    center, radii, 
+                    start_angle: Angle { radians: 0.0 },
+                    sweep_angle: Angle { radians: 2 * f32::consts::PI }, 
+                    x_rotation: Angle { radians: 0.0 },
                 })
                 .collect();
             self.draw_arcs(&arcs)
         }
-    */
 
     /// Fill in a polygon defined by the given set of points.
     fn fill_polygon(&mut self, points: &[Point<f32>]) -> crate::Result;
@@ -343,25 +339,21 @@ pub trait Surface {
         )
     }
 
-    /*
         /// Fill in several ellipses.
         #[inline]
-        fn fill_ellipses(&mut self, rects: &[Rectangle]) -> crate::Result {
-            let arcs: Vec<GeometricArc> = rects
+        fn fill_ellipses(&mut self, rects: &[Ellipse]) -> crate::Result {
+            let arcs: Vec<Arc<f32>> = rects
                 .iter()
                 .copied()
-                .map(|Rectangle { x1, y1, x2, y2 }| GeometricArc {
-                    x1,
-                    y1,
-                    x2,
-                    y2,
-                    start: Angle::ZERO,
-                    end: Angle::FULL_CIRCLE,
+                .map(|Ellipse { center, radii }| GeometricArc {
+                    center, radii, 
+                    start_angle: Angle { radians: 0.0 },
+                    sweep_angle: Angle { radians: 2.0 * f32::consts::PI },
+                    x_rotation: Angle { radians: 0.0 },
                 })
                 .collect();
             self.fill_arcs(&arcs)
         }
-    */
 }
 
 /// A surface which drawing commands can be applied to, in a non-blocking way.
