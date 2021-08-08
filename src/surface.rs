@@ -1,7 +1,10 @@
 // MIT/Apache2 License
 
-use crate::{fill::FillRule, path_from_curve, path_to_lines, Color, Ellipse};
-use lyon_geom::{Angle, Arc, CubicBezierSegment, LineSegment, Point, Rect};
+use crate::{
+    fill::FillRule, path_from_arc_closed, path_from_curve, path_to_lines, path_to_points, Color, path_from_arc,
+    Ellipse,
+};
+use lyon_geom::{Angle, Arc, CubicBezierSegment, LineSegment, Point, Rect, Vector, Size};
 use lyon_path::{Event as PathEvent, Path, PathBuffer, PathBufferSlice, PathSlice};
 use std::{array::IntoIter as ArrayIter, iter};
 
@@ -76,7 +79,7 @@ pub trait Surface {
     fn draw_paths_owned(&mut self, paths: PathBuffer) -> crate::Result {
         let lines: Vec<LineSegment> = paths
             .indices()
-            .flat_map(|path| path_to_lines(paths.get(index).iter()))
+            .flat_map(|index| path_to_lines(paths.get(index).iter()))
             .collect();
         self.draw_lines(&lines)
     }
@@ -93,7 +96,7 @@ pub trait Surface {
     }
     /// Draw several bezier curves. In many cases this is more efficient than drawing a single curve in a loop.
     #[inline]
-    fn draw_bezier_curves(&mut self, curves: &[BezierCurve]) -> crate::Result {
+    fn draw_bezier_curves(&mut self, curves: &[CubicBezierSegment<f32>]) -> crate::Result {
         let paths: PathBuffer = curves
             .iter()
             .copied()
@@ -120,12 +123,12 @@ pub trait Surface {
 
     /// Draw several rectangles. In many cases this is more efficient than drawing a single rectangle in a loop.
     #[inline]
-    fn draw_rectangles(&mut self, rects: &[Rectangle]) -> crate::Result {
+    fn draw_rectangles(&mut self, rects: &[Rect<f32>]) -> crate::Result {
         let paths: PathBuffer = rects
             .iter()
             .copied()
             .map(
-                |Rectangle {
+                |Rect {
                      origin: Point { x, y },
                      size: Size { width, height },
                  }| {
@@ -262,7 +265,12 @@ pub trait Surface {
 
     /// Fill in a rectangle.
     #[inline]
-    fn fill_rectangle(&mut self, x1: f32, y1: f32, x2: f32, y2: f32) -> crate::Result {
+    fn fill_rectangle(&mut self, x: f32, y: f32, width: f32, height: f32) -> crate::Result {
+        let x1 = x;
+        let y1 = y;
+        let x2 = x + width;
+        let y2 = y + height;
+
         self.fill_polygon(&[
             Point { x: x1, y: y1 },
             Point { x: x2, y: y1 },
@@ -274,10 +282,13 @@ pub trait Surface {
     /// Fill in several rectangles.
     #[inline]
     fn fill_rectangles(&mut self, rects: &[Rect<f32>]) -> crate::Result {
-        rects
-            .iter()
-            .copied()
-            .try_for_each(|Rectangle { x1, y1, x2, y2 }| self.fill_rectangle(x1, y1, x2, y2))
+        rects.iter().copied().try_for_each(
+            |Rect {
+                 origin: Point { x, y },
+                 size: Size { width, height },
+                 ..
+             }| self.fill_rectangle(x, y, width, height),
+        )
     }
 
     /// Fill in an arc.
@@ -312,7 +323,7 @@ pub trait Surface {
 
     /// Fill in several arcs.
     #[inline]
-    fn fill_arcs(&mut self, arcs: &[GeometricArc]) -> crate::Result {
+    fn fill_arcs(&mut self, arcs: &[Arc<f32>]) -> crate::Result {
         let paths: PathBuffer = arcs
             .iter()
             .copied()
@@ -348,7 +359,7 @@ pub trait Surface {
         let arcs: Vec<Arc<f32>> = rects
             .iter()
             .copied()
-            .map(|Ellipse { center, radii }| GeometricArc {
+            .map(|Ellipse { center, radii }| Arc {
                 center,
                 radii,
                 start_angle: Angle { radians: 0.0 },

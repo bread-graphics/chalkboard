@@ -11,7 +11,8 @@ futures-lite = { version = "1.11", optional = true }
 log = "0.4"
 lyon_geom = "0.17"
 lyon_path = "0.17"
-lyon_tesselation = "0.17"
+lyon_tessellation = "0.17"
+num-traits = "0.2"
 ordered-float = "2.1"
 tinyvec = { version = "1.1", features = ["alloc"] }
 

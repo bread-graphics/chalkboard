@@ -1,7 +1,7 @@
 // MIT/Apache2 License
 
-use lyon_geom::{point, Arc, CubicBezierSegment, LineSegment};
-use lyon_path::{iterator::PathIterator, Path, PathEvent};
+use lyon_geom::{point, Arc, CubicBezierSegment, LineSegment, Point};
+use lyon_path::{iterator::PathIterator, path::Builder, Path, PathEvent};
 use std::array::IntoIter as ArrayIter;
 
 /// Simple combinator to turn a path into a lines.
@@ -29,7 +29,7 @@ pub(crate) fn path_to_lines(
 #[inline]
 pub(crate) fn path_to_points(
     i: impl IntoIterator<Item = PathEvent>,
-) -> impl Iterator<Item = Point<f32>> {
+) -> impl Iterator<Item = Point> {
     i.into_iter().flattened().map(|pe| match pe {
         PathEvent::Begin { at } => at,
         PathEvent::Line { to, .. } => to,
@@ -53,14 +53,25 @@ pub(crate) fn path_from_arc(arc: Arc<f32>) -> Option<Path> {
     let mut iter = arc.flattened(1.0);
     builder.begin(iter.next()?);
 
-    let mut builder = arc.flattened(1.0).fold(builder, |mut builder, point| {
-        builder.line_to(point);
-        builder
-    });
+    let mut builder = build_arc(builder, iter);
 
     builder.end(false);
     Some(builder.build())
 }
 
 #[inline]
-pub(crate) fn path_from_arc_closed(arc: Arc<f32>) -> Option<Path> {}
+pub(crate) fn path_from_arc_closed(arc: Arc<f32>) -> Option<Path> {
+    let mut builder = Path::builder();
+    builder.begin(arc.center);
+    let mut builder = build_arc(builder, arc.flattened(1.0));
+    builder.close();
+    Some(builder.build())
+}
+
+#[inline]
+fn build_arc(builder: Builder, pt_iter: impl Iterator<Item = Point>) -> Builder {
+    pt_iter.fold(builder, |mut builder, point| {
+        builder.line_to(point);
+        builder
+    })
+}

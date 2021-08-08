@@ -16,14 +16,17 @@ use breadx::{
         xproto::{Rectangle as XRectangle, Window},
     },
     display::{prelude::*, Display, DisplayBase},
-    render::{double_to_fixed, tesselate_shape, PictureParameters, RenderDisplay, StandardFormat},
+    render::{
+        double_to_fixed, fixed_to_double, tesselate_shape, PictureParameters, RenderDisplay,
+        StandardFormat,
+    },
     Drawable, Pixmap,
 };
-use lyon_geom::{Angle, LineSegment, Point, Rect};
-use lyon_path::{Path, PathSlice};
-use lyon_tesselate::{
-    BuffersBuilder, FillTesselator, FillVertex, FillVertexConstructor, StrokeOptions,
-    StrokeTesselator, StrokeVertex, StrokeVertexConstructor, VertexBuffers,
+use lyon_geom::{Angle, LineSegment, Point, Rect, Size};
+use lyon_path::{Path, PathBuffer, PathBufferSlice, PathEvent, PathSlice};
+use lyon_tessellation::{
+    BuffersBuilder, FillTessellator, FillVertex, FillVertexConstructor, StrokeOption,
+    StrokeTessellator, StrokeVertex, StrokeVertexConstructor, VertexBuffers, LineCap, LineJoin,
 };
 use std::{
     array::IntoIter as ArrayIter,
@@ -115,8 +118,8 @@ struct Tesselation {
     buffers: VertexBuffers<Pointfix, usize>,
 
     // cached tesselators
-    fill_tesselator: FillTesselator,
-    stroke_tesselator: StrokeTesselator,
+    fill_tesselator: FillTessellator,
+    stroke_tesselator: StrokeTessellator,
 }
 
 struct PointfixCvt;
@@ -569,8 +572,8 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
                 a8_format,
                 tesselation: Some(Tesselation {
                     vertex_buffers: VertexBuffers::new(),
-                    fill: FillTesselator::new(),
-                    stroke: StrokeTesselator::new(),
+                    fill: FillTessellator::new(),
+                    stroke: StrokeTessellator::new(),
                 }),
             },
         )
@@ -715,12 +718,17 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
             let clr = cvt_color(clr);
             let rects: Vec<XRectangle> = rects
                 .into_iter()
-                .map(|Rectangle { x1, y1, x2, y2 }| XRectangle {
-                    x: x1 as _,
-                    y: y1 as _,
-                    width: (x2 - x1) as _,
-                    height: (y2 - y1) as _,
-                })
+                .map(
+                    |Rect {
+                         origin: Point { x, y },
+                         size: Size { width, height },
+                     }| XRectangle {
+                        x: x as _,
+                        y: y as _,
+                        width: width as _,
+                        height: height as _,
+                    },
+                )
                 .collect();
             self.target
                 .fill_rectangles(self.display.inner_mut(), PictOp::Src, clr, rects)?;
@@ -728,9 +736,13 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
         }
 
         // slow path: convert every rectangle to two triangles and then composite it
-        let rects: Vec<Rectangle> = rects
+        let rects: Vec<Rect<f32>> = rects
             .into_iter()
-            .filter(|Rectangle { x1, y1, x2, y2 }| x1 != x2 && y1 != y2)
+            .filter(
+                |Rect {
+                     size: Size { width, height },
+                 }| width != 0 && height != 0,
+            )
             .collect();
         if rects.is_empty() {
             return Ok(());
@@ -739,46 +751,74 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
         // get the min/max x and min/max y
         let min_x = *rects
             .iter()
-            .map(|Rectangle { x1, x2, .. }| cmp::min(x1, x2))
+            .map(
+                |Rect {
+                     origin: Point { x, .. },
+                     ..
+                 }| x,
+            )
             .min()
             .unwrap();
         let max_x = *rects
             .iter()
-            .map(|Rectangle { x1, x2, .. }| cmp::max(x1, x2))
+            .map(
+                |Rect {
+                     origin: Point { x, .. },
+                     size: Size { width, .. },
+                     ..
+                 }| x + width,
+            )
             .max()
             .unwrap();
         let min_y = *rects
             .iter()
-            .map(|Rectangle { y1, y2, .. }| cmp::min(y1, y2))
+            .map(
+                |Rect {
+                     origin: Point { y, .. },
+                     ..
+                 }| y,
+            )
             .min()
             .unwrap();
         let max_y = *rects
             .iter()
-            .map(|Rectangle { y1, y2, .. }| cmp::max(y1, y2))
+            .map(
+                |Rect {
+                     origin: Point { y, .. },
+                     size: Size { height, .. },
+                     ..
+                 }| y + height,
+            )
             .max()
             .unwrap();
 
         let triangles: Vec<Triangle> = rects
             .into_iter()
-            .flat_map(|Rectangle { x1, y1, x2, y2 }| {
-                let x1 = double_to_fixed(x1 - min_x);
-                let y1 = double_to_fixed(y1 - min_y);
-                let x2 = double_to_fixed(x2 - min_x);
-                let y2 = double_to_fixed(y2 - min_y);
+            .flat_map(
+                |Rect {
+                     origin: Point { x, y },
+                     size: Size { width, height },
+                     ..
+                 }| {
+                    let x1 = double_to_fixed(x - min_x);
+                    let y1 = double_to_fixed(y - min_y);
+                    let x2 = double_to_fixed(x + width - min_x);
+                    let y2 = double_to_fixed(y + height - min_y);
 
-                ArrayIter::new([
-                    Triangle {
-                        p1: Pointfix { x: x1, y: y1 },
-                        p2: Pointfix { x: x2, y: y1 },
-                        p3: Pointfix { x: x1, y: y2 },
-                    },
-                    Triangle {
-                        p1: Pointfix { x: x2, y: y1 },
-                        p2: Pointfix { x: x2, y: y2 },
-                        p3: Pointfix { x: x1, y: y2 },
-                    },
-                ])
-            })
+                    ArrayIter::new([
+                        Triangle {
+                            p1: Pointfix { x: x1, y: y1 },
+                            p2: Pointfix { x: x2, y: y1 },
+                            p3: Pointfix { x: x1, y: y2 },
+                        },
+                        Triangle {
+                            p1: Pointfix { x: x2, y: y1 },
+                            p2: Pointfix { x: x2, y: y2 },
+                            p3: Pointfix { x: x1, y: y2 },
+                        },
+                    ])
+                },
+            )
             .collect();
 
         let fill = self.fill_picture(max_x - min_x, max_y - min_y)?;
@@ -786,7 +826,7 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
     }
 
     #[inline]
-    fn tesselate_stroke_path(&mut self, path: impl Iterator<Item = PathEvent>) -> crate::Result {
+    fn tesselate_stroke_path(&mut self, path: impl Iterator<Item = PathEvent>) -> Vec<Triangle> {
         // use lyon_tesselate to tesselate the stroke
         let stroke_options = StrokeOption {
             start_cap: LineCap::Butt,
@@ -818,12 +858,18 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
             })
             .collect();
 
+        triangles
+    }
+    
+    #[inline]
+    fn stroke_path(&mut self, path: impl Iterator<Item = PathEvent>) -> crate::Result {
+        let triangles = self.tessleate_stroke_path(path);
         let fill = self.stroke_picture()?;
         self.fill_triangles(triangles, fill, 0, 0)
     }
 
     #[inline]
-    fn tesselate_fill_path(&mut self, path: impl Iterator<Item = PathEvent>) -> crate::Result {
+    fn tesselate_fill_path(&mut self, path: impl Iterator<Item = PathEvent>) -> FillPathInfo {
         let mut tesselate = self.tesselate.as_mut().expect("NPP");
         tesselate.buffers.vertices.clear();
         tesselate.buffers.indices.clear();
@@ -836,7 +882,7 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
         let vertices = mem::take(&mut tesselate.buffers.vertices);
 
         if vertices.len() < 3 || tesselate.buffer.indices.len() < 3 {
-            return Ok(());
+            return FillPathInfo::default();
         }
 
         let x_iter = vertices.iter().map(|Pointfix { x, .. }| x);
@@ -846,9 +892,6 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
         let y_iter = vertices.iter().map(|Pointfix { y, .. }| y);
         let min_y = y_iter.clone().min().unwrap();
         let max_y = y_iter.max().unwrap();
-
-        let width = fixed_to_double(max_x - min_x);
-        let height = fixed_to_double(max_y - min_y);
 
         let triangles: Vec<Triangle> = tesselate
             .buffers()
@@ -861,6 +904,17 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
             })
             .collect();
 
+        FillPathInfo { triangles, min_x, max_x, min_y, max_y }
+    }
+
+    #[inline]
+    fn fill_path(&mut self, path: impl Iterator<Item = PathEvent>) -> crate::Result {
+        let FillPathInfo { triangles, min_x, min_y, max_x, max_y } = self.tesselate_fill_path(path);
+        if triangles.is_empty() { return Ok(()); }
+
+        let width = fixed_to_double(max_x - min_x);
+        let height = fixed_to_double(max_y - min_y);
+
         let fill = self.fill_picture(width as i32, height as i32)?;
         self.fill_triangles(
             triangles,
@@ -869,6 +923,12 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
             -fixed_to_double(min_y) as i16,
         )
     }
+}
+
+#[derive(Default)]
+struct FillPathInfo {
+    triangles: Vec<Triangle>,
+    min_x: f32, max_x: f32, min_y: f32, max_y: f32,
 }
 
 #[cfg(feature = "async")]
@@ -1009,26 +1069,26 @@ impl<'dpy, Dpy: Display + ?Sized> Surface for RenderBreadxSurface<'dpy, Dpy> {
 
     #[inline]
     fn draw_path(&mut self, path: PathSlice<'_>) -> crate::Result {
-        self.tesselate_stroke_path(path.iter())
+        self.stroke_path(path.iter())
     }
 
     #[inline]
     fn draw_path_owned(&mut self, path: Path) -> crate::Result {
-        self.tesselate_stroke_path(path.iter())
+        self.stroke_path(path.iter())
     }
 
     #[inline]
     fn draw_paths(&mut self, paths: PathBufferSlice<'_>) -> crate::Result {
         paths
             .indices()
-            .try_for_each(|path| self.tesselate_stroke_path(paths.get(path).iter()))
+            .try_for_each(|path| self.stroke_path(paths.get(path).iter()))
     }
 
     #[inline]
     fn draw_paths_owned(&mut self, paths: PathBuffer) -> crate::Result {
         paths
             .indices()
-            .try_for_each(|path| self.tesselate_stroke_path(paths.get(path).iter()))
+            .try_for_each(|path| self.stroke_path(paths.get(path).iter()))
     }
 
     #[inline]
@@ -1050,36 +1110,36 @@ impl<'dpy, Dpy: Display + ?Sized> Surface for RenderBreadxSurface<'dpy, Dpy> {
         builder.close();
         let path = builder.build();
 
-        self.tesselate_fill_path(path.iter())
+        self.fill_path(path.iter())
     }
 
     #[inline]
     fn fill_path(&mut self, path: PathSlice<'_>) -> crate::Result {
-        self.tesselate_fill_path(path.iter())
+        self.fill_path(path.iter())
     }
 
     #[inline]
     fn fill_path_owned(&mut self, path: Path) -> crate::Result {
-        self.tesselate_fill_path(path.iter())
+        self.fill_path(path.iter())
     }
 
     #[inline]
     fn fill_paths_owned(&mut self, paths: PathBuffer) -> crate::Result {
         paths
             .indices()
-            .try_for_each(|index| self.tesselate_fill_path(paths.get(index).iter()))
+            .try_for_each(|index| self.fill_path(paths.get(index).iter()))
     }
 
     #[inline]
     fn fill_paths(&mut self, paths: PathBufferSlice<'_>) -> crate::Result {
         paths
             .indices()
-            .try_for_each(|index| self.tesselate_fill_path(paths.get(index).iter()))
+            .try_for_each(|index| self.fill_path(paths.get(index).iter()))
     }
 
     #[inline]
     fn fill_rectangle(&mut self, x: f32, y: f32, width: f32, height: f32) -> crate::Result {
-        self.fill_rectangles_internal(iter::once(Rectangle {
+        self.fill_rectangles_internal(iter::once(Rect {
             origin: Point { x, y },
             size: Size { width, height },
         }))
@@ -1088,40 +1148,6 @@ impl<'dpy, Dpy: Display + ?Sized> Surface for RenderBreadxSurface<'dpy, Dpy> {
     #[inline]
     fn fill_rectangles(&mut self, rects: &[Rect<f32>]) -> crate::Result {
         self.fill_rectangles_internal(rects.iter().copied())
-    }
-}
-
-#[inline]
-fn rect_to_trapezoid(rect: Rectangle) -> Trapezoid {
-    let x1 = cmp::min(rect.x1, rect.x2);
-    let x2 = cmp::max(rect.x1, rect.x2);
-    let y1 = cmp::min(rect.y1, rect.y2);
-    let y2 = cmp::max(rect.y1, rect.y2);
-    let l1 = Linefix {
-        p1: Pointfix {
-            x: x1 << 16,
-            y: y1 << 16,
-        },
-        p2: Pointfix {
-            x: x1 << 16,
-            y: y2 << 16,
-        },
-    };
-    let l2 = Linefix {
-        p1: Pointfix {
-            x: x2 << 16,
-            y: y1 << 16,
-        },
-        p2: Pointfix {
-            x: x2 << 16,
-            y: y2 << 16,
-        },
-    };
-    Trapezoid {
-        left: l1,
-        right: l2,
-        top: y1 << 16,
-        bottom: y2 << 16,
     }
 }
 
@@ -1194,11 +1220,11 @@ pub(crate) fn cvt_color(color: Color) -> XrColor {
 }
 
 #[inline]
-fn cvt_rect(rect: Rectangle) -> XRectangle {
+fn cvt_rect(rect: Rect<f32>) -> XRectangle {
     XRectangle {
-        x: cmp::min(rect.x1, rect.x2) as _,
-        y: cmp::min(rect.y1, rect.y2) as _,
-        width: (rect.x2 - rect.x1).abs() as _,
-        height: (rect.y2 - rect.y1).abs() as _,
+        x: rect.x as _,
+        y: rect.y as _,
+        width: rect.width as _,
+        height: rect.height as _,
     }
 }

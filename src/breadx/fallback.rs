@@ -16,7 +16,7 @@ use breadx::{
     display::{prelude::*, Display, DisplayBase, GcParameters},
     Drawable, Gcontext,
 };
-use lyon_geom::{Angle, Arc, LineSegment, Point, Rect};
+use lyon_geom::{Angle, Arc, LineSegment, Point, Rect, Size, Vector};
 use std::{
     cmp::Ordering,
     collections::hash_map::{Entry, HashMap},
@@ -344,7 +344,7 @@ impl<'dpy, Dpy: Display + ?Sized> Surface for FallbackBreadxSurface<'dpy, Dpy> {
             .iter()
             .copied()
             .map(
-                |Line {
+                |LineSegment {
                      from: Point { x: x1, y: y1 },
                      to: Point { x: x2, y: y2 },
                  }| Segment {
@@ -379,7 +379,7 @@ impl<'dpy, Dpy: Display + ?Sized> Surface for FallbackBreadxSurface<'dpy, Dpy> {
             .iter()
             .copied()
             .map(
-                |Rectangle {
+                |Rect {
                      origin: Point { x, y },
                      size: Size { width, height },
                  }| XRect {
@@ -481,7 +481,7 @@ impl<'dpy, Dpy: Display + ?Sized> Surface for FallbackBreadxSurface<'dpy, Dpy> {
             .iter()
             .copied()
             .map(
-                |Rectangle {
+                |Rect {
                      origin: Point { x, y },
                      size: Size { width, height },
                  }| XRect {
@@ -519,7 +519,7 @@ impl<'dpy, Dpy: Display + ?Sized> Surface for FallbackBreadxSurface<'dpy, Dpy> {
             .iter()
             .copied()
             .map(
-                |cArc {
+                |Arc {
                      center:
                          Point {
                              x: xcenter,

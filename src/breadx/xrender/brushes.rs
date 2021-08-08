@@ -13,7 +13,7 @@
 //! TODO: finish the algorithm
 
 use super::{cvt_color, FillRuleKey, MaybePixmapPicture};
-use crate::{gradient::Gradient, Angle};
+use crate::gradient::Gradient;
 use breadx::{
     auto::{
         render::{Color as XrColor, Fixed, Pointfix, Repeat, Transform},
@@ -22,6 +22,7 @@ use breadx::{
     prelude::*,
     render::{double_to_fixed, Pictformat, Picture, PictureParameters, RenderDisplay},
 };
+use lyon_geom::Angle;
 use std::collections::hash_map::{Entry, HashMap};
 use tinyvec::TinyVec;
 
