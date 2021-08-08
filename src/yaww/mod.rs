@@ -8,7 +8,7 @@ use crate::{
     util::DebugContainer,
     Color, Ellipse,
 };
-use lyon_geom::{LineSegment, Angle, Arc, Point, Rect};
+use lyon_geom::{Angle, Arc, LineSegment, Point, Rect};
 use std::{
     array::IntoIter as ArrayIter,
     cmp,
@@ -25,7 +25,10 @@ use yaww::{
     Point as YawwPoint, SendsDirective,
 };
 
-const FEATURES: SurfaceFeatures = SurfaceFeatures { gradients: false, floats: false };
+const FEATURES: SurfaceFeatures = SurfaceFeatures {
+    gradients: false,
+    floats: false,
+};
 
 /// Yaww GDI drawing surface. This uses GDI to render on surfaces, even if it is slower than OpenGL or Direct2D.
 #[derive(Debug)]
@@ -289,28 +292,39 @@ impl<'thread, S: SendsDirective> YawwGdiSurface<'thread, S> {
     #[inline]
     fn rectangles(&mut self, rects: &[Rect<f32>]) -> crate::Result {
         self.residual().task_queue.reserve(rects.len());
-        rects
-            .iter()
-            .copied()
-            .try_for_each::<_, crate::Result>(|Rectangle { origin: Point { x, y }, size: Size { width, height } }| {
-                let x2 = (x + width) as f32; let y2 = (y + height) as f32;
+        rects.iter().copied().try_for_each::<_, crate::Result>(
+            |Rectangle {
+                 origin: Point { x, y },
+                 size: Size { width, height },
+             }| {
+                let x2 = (x + width) as f32;
+                let y2 = (y + height) as f32;
                 let t = self.dc.rectangle(self.thread, x as f32, y as f32, x2, y2)?;
                 self.residual().task_queue.push(t);
                 Ok(())
-            })
+            },
+        )
     }
 
     #[inline]
     fn arc(
         &mut self,
-        xcenter: f32, ycenter: f32,
-        xradius: f32, yradius: f32,
+        xcenter: f32,
+        ycenter: f32,
+        xradius: f32,
+        yradius: f32,
         start_angle: Angle<f32>,
         sweep_angle: Angle<f32>,
     ) -> crate::Result {
         let [x1, y1, x2, y2, asx, asy, aex, aey] = calc_posns(Arc {
-            center: Point { x: xcenter, y: ycenter },
-            radii: Vector { x: xradius, y: yradius },
+            center: Point {
+                x: xcenter,
+                y: ycenter,
+            },
+            radii: Vector {
+                x: xradius,
+                y: yradius,
+            },
             start_angle,
             sweep_angle,
             x_rotation: Angle { radians: 0.0 },
@@ -352,19 +366,29 @@ impl<'thread, S: SendsDirective> YawwGdiSurface<'thread, S> {
     #[inline]
     fn ellipses(&mut self, rects: &[Ellipse]) -> crate::Result {
         self.residual().task_queue.reserve(rects.len());
-        rects
-            .iter()
-            .copied()
-            .try_for_each::<_, crate::Result>(|Ellipse { center: Point { x: xcenter, y: ycenter }, radii: Vector { x: xradius, y: yradius } }| {
-        let x1 = (xcenter - xradius) as i32;
-        let y1 = (ycenter - yradius) as i32;
-        let x2 = x1 + ((xradius * 2.0) as i32);
-        let y2 = y1 + ((yradius * 2.0) as i32);
+        rects.iter().copied().try_for_each::<_, crate::Result>(
+            |Ellipse {
+                 center:
+                     Point {
+                         x: xcenter,
+                         y: ycenter,
+                     },
+                 radii:
+                     Vector {
+                         x: xradius,
+                         y: yradius,
+                     },
+             }| {
+                let x1 = (xcenter - xradius) as i32;
+                let y1 = (ycenter - yradius) as i32;
+                let x2 = x1 + ((xradius * 2.0) as i32);
+                let y2 = y1 + ((yradius * 2.0) as i32);
 
                 let t = self.dc.ellipse(self.thread, x1, y1, x2, y2)?;
                 self.residual().task_queue.push(t);
                 Ok(())
-            })
+            },
+        )
     }
 
     #[inline]
@@ -473,7 +497,13 @@ impl<'thread, S: SendsDirective> Surface for YawwGdiSurface<'thread, S> {
     }
 
     #[inline]
-    fn draw_ellipse(&mut self, xcenter: f32, ycenter: f32, xradius: f32, yradius: f32) -> crate::Result {
+    fn draw_ellipse(
+        &mut self,
+        xcenter: f32,
+        ycenter: f32,
+        xradius: f32,
+        yradius: f32,
+    ) -> crate::Result {
         self.submit(Stroke)?;
         self.ellipse(xcenter, ycenter, xradius, yradius)
     }
@@ -523,7 +553,13 @@ impl<'thread, S: SendsDirective> Surface for YawwGdiSurface<'thread, S> {
     }
 
     #[inline]
-    fn fill_ellipse(&mut self, xcenter: f32, ycenter: f32, xradius: f32, yradius: f32) -> crate::Result {
+    fn fill_ellipse(
+        &mut self,
+        xcenter: f32,
+        ycenter: f32,
+        xradius: f32,
+        yradius: f32,
+    ) -> crate::Result {
         self.submit(Fill)?;
         self.ellipse(xcenter, ycenter, xradius, yradius)
     }

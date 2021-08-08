@@ -208,21 +208,24 @@ pub trait Surface {
         )
     }
 
-        /// Draw several ellipses.
-        #[inline]
-        fn draw_ellipses(&mut self, rects: &[Ellipse]) -> crate::Result {
-            let arcs: Vec<Arc<f32>> = rects
-                .iter()
-                .copied()
-                .map(|Ellipse { center, radii }| Arc {
-                    center, radii, 
-                    start_angle: Angle { radians: 0.0 },
-                    sweep_angle: Angle { radians: 2 * f32::consts::PI }, 
-                    x_rotation: Angle { radians: 0.0 },
-                })
-                .collect();
-            self.draw_arcs(&arcs)
-        }
+    /// Draw several ellipses.
+    #[inline]
+    fn draw_ellipses(&mut self, rects: &[Ellipse]) -> crate::Result {
+        let arcs: Vec<Arc<f32>> = rects
+            .iter()
+            .copied()
+            .map(|Ellipse { center, radii }| Arc {
+                center,
+                radii,
+                start_angle: Angle { radians: 0.0 },
+                sweep_angle: Angle {
+                    radians: 2 * f32::consts::PI,
+                },
+                x_rotation: Angle { radians: 0.0 },
+            })
+            .collect();
+        self.draw_arcs(&arcs)
+    }
 
     /// Fill in a polygon defined by the given set of points.
     fn fill_polygon(&mut self, points: &[Point<f32>]) -> crate::Result;
@@ -236,7 +239,7 @@ pub trait Surface {
 
     /// Fill in a path slice.
     #[inline]
-    fn fill_path(&mut self, path: PathSlice<'l>) -> crate::Result {
+    fn fill_path(&mut self, path: PathSlice<'_>) -> crate::Result {
         let points: Vec<Point<f32>> = path_to_points(path.iter()).collect();
         self.fill_polygon(&points)
     }
@@ -339,21 +342,24 @@ pub trait Surface {
         )
     }
 
-        /// Fill in several ellipses.
-        #[inline]
-        fn fill_ellipses(&mut self, rects: &[Ellipse]) -> crate::Result {
-            let arcs: Vec<Arc<f32>> = rects
-                .iter()
-                .copied()
-                .map(|Ellipse { center, radii }| GeometricArc {
-                    center, radii, 
-                    start_angle: Angle { radians: 0.0 },
-                    sweep_angle: Angle { radians: 2.0 * f32::consts::PI },
-                    x_rotation: Angle { radians: 0.0 },
-                })
-                .collect();
-            self.fill_arcs(&arcs)
-        }
+    /// Fill in several ellipses.
+    #[inline]
+    fn fill_ellipses(&mut self, rects: &[Ellipse]) -> crate::Result {
+        let arcs: Vec<Arc<f32>> = rects
+            .iter()
+            .copied()
+            .map(|Ellipse { center, radii }| GeometricArc {
+                center,
+                radii,
+                start_angle: Angle { radians: 0.0 },
+                sweep_angle: Angle {
+                    radians: 2.0 * f32::consts::PI,
+                },
+                x_rotation: Angle { radians: 0.0 },
+            })
+            .collect();
+        self.fill_arcs(&arcs)
+    }
 }
 
 /// A surface which drawing commands can be applied to, in a non-blocking way.
