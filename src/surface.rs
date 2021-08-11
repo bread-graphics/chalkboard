@@ -1,11 +1,13 @@
 // MIT/Apache2 License
 
 use crate::{
-    fill::FillRule, path_from_arc_closed, path_from_curve, path_to_lines, path_to_points, Color, path_from_arc,
-    Ellipse,
+    fill::FillRule, path_from_arc, path_from_arc_closed, path_from_curve, path_to_lines,
+    path_to_points, Color, Ellipse,
 };
-use lyon_geom::{Angle, Arc, CubicBezierSegment, LineSegment, Point, Rect, Vector, Size};
-use lyon_path::{Event as PathEvent, Path, PathBuffer, PathBufferSlice, PathSlice};
+use lyon_geom::{Angle, Arc, CubicBezierSegment, LineSegment, Point, Rect, Size, Vector};
+use lyon_path::{
+    builder::PathBuilder, Event as PathEvent, Path, PathBuffer, PathBufferSlice, PathSlice,
+};
 use std::{array::IntoIter as ArrayIter, iter};
 
 #[cfg(feature = "async")]
@@ -47,8 +49,8 @@ pub trait Surface {
     fn draw_lines(&mut self, lines: &[LineSegment<f32>]) -> crate::Result {
         lines.iter().copied().try_for_each(
             |LineSegment {
-                 from: Point { x: x1, y: y1 },
-                 to: Point { x: x2, y: y2 },
+                 from: Point { x: x1, y: y1, .. },
+                 to: Point { x: x2, y: y2, .. },
              }| self.draw_line(x1, y1, x2, y2),
         )
     }
@@ -56,19 +58,19 @@ pub trait Surface {
     /// Draw a path.
     #[inline]
     fn draw_path(&mut self, path: PathSlice<'_>) -> crate::Result {
-        let lines: Vec<LineSegment> = path_to_lines(path.iter()).collect();
+        let lines: Vec<LineSegment<f32>> = path_to_lines(path.iter()).collect();
         self.draw_lines(&lines)
     }
     /// Draw an owned path.
     #[inline]
     fn draw_path_owned(&mut self, path: Path) -> crate::Result {
-        let lines: Vec<LineSegment> = path_to_lines(path.iter()).collect();
+        let lines: Vec<LineSegment<f32>> = path_to_lines(path.iter()).collect();
         self.draw_lines(&lines)
     }
     /// Draw several paths.
     #[inline]
     fn draw_paths(&mut self, paths: PathBufferSlice<'_>) -> crate::Result {
-        let lines: Vec<LineSegment> = paths
+        let lines: Vec<LineSegment<f32>> = paths
             .indices()
             .flat_map(|index| path_to_lines(paths.get(index).iter()))
             .collect();
@@ -77,7 +79,7 @@ pub trait Surface {
     /// Draw several paths, if we own the paths.
     #[inline]
     fn draw_paths_owned(&mut self, paths: PathBuffer) -> crate::Result {
-        let lines: Vec<LineSegment> = paths
+        let lines: Vec<LineSegment<f32>> = paths
             .indices()
             .flat_map(|index| path_to_lines(paths.get(index).iter()))
             .collect();
@@ -97,11 +99,14 @@ pub trait Surface {
     /// Draw several bezier curves. In many cases this is more efficient than drawing a single curve in a loop.
     #[inline]
     fn draw_bezier_curves(&mut self, curves: &[CubicBezierSegment<f32>]) -> crate::Result {
-        let paths: PathBuffer = curves
-            .iter()
-            .copied()
-            .map(|curve| path_from_curve(curve))
-            .collect();
+        let mut paths = PathBuffer::new();
+        curves.iter().copied().for_each(|curve| {
+            let mut builder = paths.builder();
+            builder.begin(curve.from);
+            builder.cubic_bezier_to(curve.ctrl1, curve.ctrl2, curve.to);
+            builder.end(false);
+            builder.build();
+        });
         self.draw_paths_owned(paths)
     }
 
@@ -109,13 +114,10 @@ pub trait Surface {
     #[inline]
     fn draw_rectangle(&mut self, x: f32, y: f32, width: f32, height: f32) -> crate::Result {
         let mut builder = Path::builder();
-        builder.begin(Point { x, y });
-        builder.line_to(Point { x: x + width, y });
-        builder.line_to(Point {
-            x: x + width,
-            y: y + height,
-        });
-        builder.line_to(Point { x, y: y + height });
+        builder.begin(Point::new(x, y));
+        builder.line_to(Point::new(x + width, y));
+        builder.line_to(Point::new(x + width, y + height));
+        builder.line_to(Point::new(x, y + height));
         builder.close();
 
         self.draw_path_owned(builder.build())
@@ -124,28 +126,22 @@ pub trait Surface {
     /// Draw several rectangles. In many cases this is more efficient than drawing a single rectangle in a loop.
     #[inline]
     fn draw_rectangles(&mut self, rects: &[Rect<f32>]) -> crate::Result {
-        let paths: PathBuffer = rects
-            .iter()
-            .copied()
-            .map(
-                |Rect {
-                     origin: Point { x, y },
-                     size: Size { width, height },
-                 }| {
-                    let mut builder = Path::builder();
-                    builder.begin(Point { x, y });
-                    builder.line_to(Point { x: x + width, y });
-                    builder.line_to(Point {
-                        x: x + width,
-                        y: y + height,
-                    });
-                    builder.line_to(Point { x, y: y + height });
-                    builder.close();
+        let mut paths = PathBuffer::new();
+        rects.iter().copied().for_each(
+            |Rect {
+                 origin: Point { x, y, .. },
+                 size: Size { width, height, .. },
+             }| {
+                let mut builder = paths.builder();
+                builder.begin(Point::new(x, y));
+                builder.line_to(Point::new(x + width, y));
+                builder.line_to(Point::new(x + width, y + height));
+                builder.line_to(Point::new(x, y + height));
+                builder.close();
 
-                    builder.build()
-                },
-            )
-            .collect();
+                builder.build();
+            },
+        );
 
         self.draw_paths_owned(paths)
     }
@@ -162,14 +158,8 @@ pub trait Surface {
         sweep_angle: Angle<f32>,
     ) -> crate::Result {
         match path_from_arc(Arc {
-            center: Point {
-                x: xcenter,
-                y: ycenter,
-            },
-            radii: Vector {
-                x: xradius,
-                y: yradius,
-            },
+            center: Point::new(xcenter, ycenter),
+            radii: Vector::new(xradius, yradius),
             start_angle,
             sweep_angle,
             x_rotation: Angle { radians: 0.0 },
@@ -182,12 +172,19 @@ pub trait Surface {
     /// Draw several arcs.
     #[inline]
     fn draw_arcs(&mut self, arcs: &[Arc<f32>]) -> crate::Result {
-        self.draw_paths_owned(
-            arcs.iter()
-                .copied()
-                .filter_map(|arc| path_from_arc(arc))
-                .collect(),
-        )
+        let mut buffer = PathBuffer::new();
+        arcs.iter()
+            .copied()
+            .filter_map(|arc| path_from_arc(arc))
+            .for_each(|path| {
+                path.iter()
+                    .fold(buffer.builder(), |mut builder, event| {
+                        builder.path_event(event);
+                        builder
+                    })
+                    .build();
+            });
+        self.draw_paths_owned(buffer)
     }
 
     /// Draw an ellipse.
@@ -206,7 +203,7 @@ pub trait Surface {
             yradius,
             Angle { radians: 0.0 },
             Angle {
-                radians: f32::consts::PI * 2.0,
+                radians: std::f32::consts::PI * 2.0,
             },
         )
     }
@@ -222,7 +219,7 @@ pub trait Surface {
                 radii,
                 start_angle: Angle { radians: 0.0 },
                 sweep_angle: Angle {
-                    radians: 2 * f32::consts::PI,
+                    radians: 2.0 * std::f32::consts::PI,
                 },
                 x_rotation: Angle { radians: 0.0 },
             })
@@ -272,10 +269,10 @@ pub trait Surface {
         let y2 = y + height;
 
         self.fill_polygon(&[
-            Point { x: x1, y: y1 },
-            Point { x: x2, y: y1 },
-            Point { x: x2, y: y2 },
-            Point { x: x1, y: y2 },
+            Point::new(x1, y1),
+            Point::new(x2, y1),
+            Point::new(x2, y2),
+            Point::new(x1, y2),
         ])
     }
 
@@ -284,8 +281,8 @@ pub trait Surface {
     fn fill_rectangles(&mut self, rects: &[Rect<f32>]) -> crate::Result {
         rects.iter().copied().try_for_each(
             |Rect {
-                 origin: Point { x, y },
-                 size: Size { width, height },
+                 origin: Point { x, y, .. },
+                 size: Size { width, height, .. },
                  ..
              }| self.fill_rectangle(x, y, width, height),
         )
@@ -303,20 +300,14 @@ pub trait Surface {
         sweep_angle: Angle<f32>,
     ) -> crate::Result {
         let arc = Arc {
-            center: Point {
-                x: xcenter,
-                y: ycenter,
-            },
-            radii: Vector {
-                x: xradius,
-                y: yradius,
-            },
+            center: Point::new(xcenter, ycenter),
+            radii: Vector::new(xradius, yradius),
             start_angle,
             sweep_angle,
             x_rotation: Angle { radians: 0.0 },
         };
         match path_from_arc_closed(arc) {
-            Some(path) => self.fill_path(path),
+            Some(path) => self.fill_path(path.as_slice()),
             None => Ok(()),
         }
     }
@@ -324,12 +315,19 @@ pub trait Surface {
     /// Fill in several arcs.
     #[inline]
     fn fill_arcs(&mut self, arcs: &[Arc<f32>]) -> crate::Result {
-        let paths: PathBuffer = arcs
-            .iter()
+        let mut buffer = PathBuffer::new();
+        arcs.iter()
             .copied()
             .filter_map(|arc| path_from_arc_closed(arc))
-            .collect();
-        self.fill_paths_owned(paths)
+            .for_each(|path| {
+                path.iter()
+                    .fold(buffer.builder(), |mut builder, event| {
+                        builder.path_event(event);
+                        builder
+                    })
+                    .build();
+            });
+        self.fill_paths_owned(buffer)
     }
 
     /// Fill in an ellipse.
@@ -346,9 +344,9 @@ pub trait Surface {
             ycenter,
             xradius,
             yradius,
-            Angle { radians: 0 },
+            Angle { radians: 0.0 },
             Angle {
-                radians: 2.0 * f32::consts::PI,
+                radians: 2.0 * std::f32::consts::PI,
             },
         )
     }
@@ -364,7 +362,7 @@ pub trait Surface {
                 radii,
                 start_angle: Angle { radians: 0.0 },
                 sweep_angle: Angle {
-                    radians: 2.0 * f32::consts::PI,
+                    radians: 2.0 * std::f32::consts::PI,
                 },
                 x_rotation: Angle { radians: 0.0 },
             })

@@ -345,8 +345,8 @@ impl<'dpy, Dpy: Display + ?Sized> Surface for FallbackBreadxSurface<'dpy, Dpy> {
             .copied()
             .map(
                 |LineSegment {
-                     from: Point { x: x1, y: y1 },
-                     to: Point { x: x2, y: y2 },
+                     from: Point { x: x1, y: y1, .. },
+                     to: Point { x: x2, y: y2, .. },
                  }| Segment {
                     x1: x1 as _,
                     y1: y1 as _,
@@ -380,8 +380,8 @@ impl<'dpy, Dpy: Display + ?Sized> Surface for FallbackBreadxSurface<'dpy, Dpy> {
             .copied()
             .map(
                 |Rect {
-                     origin: Point { x, y },
-                     size: Size { width, height },
+                     origin: Point { x, y, .. },
+                     size: Size { width, height, .. },
                  }| XRect {
                     x: x as _,
                     y: y as _,
@@ -405,7 +405,14 @@ impl<'dpy, Dpy: Display + ?Sized> Surface for FallbackBreadxSurface<'dpy, Dpy> {
         sweep_angle: Angle<f32>,
     ) -> crate::Result {
         self.submit_draw(Stroke)?;
-        let arc = convert_arc(xcenter, ycenter, xradius, yradius, start_angle, sweep_angle);
+        let arc = convert_arc(
+            xcenter as _,
+            ycenter as _,
+            xradius as _,
+            yradius as _,
+            start_angle,
+            sweep_angle,
+        );
         self.gc.draw_arc(self.display, self.target, arc)?;
         Ok(())
     }
@@ -422,17 +429,26 @@ impl<'dpy, Dpy: Display + ?Sized> Surface for FallbackBreadxSurface<'dpy, Dpy> {
                          Point {
                              x: xcenter,
                              y: ycenter,
+                             ..
                          },
                      radii:
                          Vector {
                              x: xradius,
                              y: yradius,
+                             ..
                          },
                      start_angle,
                      sweep_angle,
                      ..
                  }| {
-                    convert_arc(xcenter, ycenter, xradius, yradius, start_angle, sweep_angle)
+                    convert_arc(
+                        xcenter as _,
+                        ycenter as _,
+                        xradius as _,
+                        yradius as _,
+                        start_angle,
+                        sweep_angle,
+                    )
                 },
             )
             .collect();
@@ -446,7 +462,7 @@ impl<'dpy, Dpy: Display + ?Sized> Surface for FallbackBreadxSurface<'dpy, Dpy> {
         let points: Vec<XPoint> = points
             .iter()
             .copied()
-            .map(|Point { x, y }| XPoint {
+            .map(|Point { x, y, .. }| XPoint {
                 x: x as _,
                 y: y as _,
             })
@@ -482,8 +498,8 @@ impl<'dpy, Dpy: Display + ?Sized> Surface for FallbackBreadxSurface<'dpy, Dpy> {
             .copied()
             .map(
                 |Rect {
-                     origin: Point { x, y },
-                     size: Size { width, height },
+                     origin: Point { x, y, .. },
+                     size: Size { width, height, .. },
                  }| XRect {
                     x: x as _,
                     y: y as _,
@@ -503,11 +519,18 @@ impl<'dpy, Dpy: Display + ?Sized> Surface for FallbackBreadxSurface<'dpy, Dpy> {
         ycenter: f32,
         xradius: f32,
         yradius: f32,
-        start_angle: Angle,
-        sweep_angle: Angle,
+        start_angle: Angle<f32>,
+        sweep_angle: Angle<f32>,
     ) -> crate::Result {
         self.submit_draw(Fill)?;
-        let arc = convert_arc(xcenter, ycenter, xradius, yradius, start_angle, sweep_angle);
+        let arc = convert_arc(
+            xcenter as _,
+            ycenter as _,
+            xradius as _,
+            yradius as _,
+            start_angle,
+            sweep_angle,
+        );
         self.gc.fill_arc(self.display, self.target, arc)?;
         Ok(())
     }
@@ -524,16 +547,26 @@ impl<'dpy, Dpy: Display + ?Sized> Surface for FallbackBreadxSurface<'dpy, Dpy> {
                          Point {
                              x: xcenter,
                              y: ycenter,
+                             ..
                          },
                      radii:
                          Vector {
                              x: xradius,
                              y: yradius,
+                             ..
                          },
                      start_angle,
                      sweep_angle,
+                     ..
                  }| {
-                    convert_arc(xcenter, ycenter, xradius, yradius, start_angle, sweep_angle)
+                    convert_arc(
+                        xcenter as _,
+                        ycenter as _,
+                        xradius as _,
+                        yradius as _,
+                        start_angle,
+                        sweep_angle,
+                    )
                 },
             )
             .collect();
@@ -548,34 +581,29 @@ fn convert_arc(
     ycenter: i32,
     xradius: i32,
     yradius: i32,
-    start: Angle,
-    end: Angle,
+    start: Angle<f32>,
+    end: Angle<f32>,
 ) -> XArc {
     let x = xcenter - xradius;
     let y = ycenter - yradius;
-    let width = xradius * 2.0;
-    let height = yradius * 2.0;
+    let width = xradius * 2;
+    let height = yradius * 2;
 
     XArc {
-        x,
-        y,
-        width,
-        height,
-        angle1: convert_angle(
-            start
-                + Angle {
-                    radians: f32::consts::FRAC_PI_4,
-                },
-        ),
-        angle2: convert_angle(
-            end + Angle {
-                radians: f32::consts::FRAC_PI_4,
-            },
-        ),
+        x: x as i16,
+        y: y as i16,
+        width: width as u16,
+        height: height as u16,
+        angle1: convert_angle(start),
+        angle2: convert_angle(end),
     }
 }
 
 #[inline]
-fn convert_angle(angle: Angle) -> i16 {
+fn convert_angle(angle: Angle<f32>) -> i16 {
+    let angle = angle
+        + Angle {
+            radians: std::f32::consts::FRAC_PI_4,
+        };
     (angle.to_degrees() * 64.0) as i16
 }

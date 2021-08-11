@@ -8,7 +8,7 @@ use crate::{
     util::DebugContainer,
     Color, Ellipse,
 };
-use lyon_geom::{Angle, Arc, LineSegment, Point, Rect};
+use lyon_geom::{Angle, Arc, LineSegment, Point, Rect, Size, Vector};
 use std::{
     array::IntoIter as ArrayIter,
     cmp,
@@ -267,17 +267,19 @@ impl<'thread, S: SendsDirective> YawwGdiSurface<'thread, S> {
     #[inline]
     fn lines(&mut self, lines: &[LineSegment<f32>]) -> crate::Result {
         self.residual().task_queue.reserve(lines.len() * 2);
-        lines
-            .iter()
-            .copied()
-            .try_for_each::<_, crate::Result>(|Line { x1, y1, x2, y2 }| {
+        lines.iter().copied().try_for_each::<_, crate::Result>(
+            |LineSegment {
+                 from: Point { x: x1, y: y1, .. },
+                 to: Point { x: x2, y: y2, .. },
+             }| {
                 let t = ArrayIter::new([
-                    self.dc.move_to(self.thread, x1, y1)?,
-                    self.dc.line_to(self.thread, x2, y2)?,
+                    self.dc.move_to(self.thread, x1 as i32, y1 as i32)?,
+                    self.dc.line_to(self.thread, x2 as i32, y2 as i32)?,
                 ]);
                 self.residual().task_queue.extend(t);
                 Ok(())
-            })
+            },
+        )
     }
 
     #[inline]
@@ -293,13 +295,13 @@ impl<'thread, S: SendsDirective> YawwGdiSurface<'thread, S> {
     fn rectangles(&mut self, rects: &[Rect<f32>]) -> crate::Result {
         self.residual().task_queue.reserve(rects.len());
         rects.iter().copied().try_for_each::<_, crate::Result>(
-            |Rectangle {
-                 origin: Point { x, y },
-                 size: Size { width, height },
+            |Rect {
+                 origin: Point { x, y, .. },
+                 size: Size { width, height, .. },
              }| {
-                let x2 = (x + width) as f32;
-                let y2 = (y + height) as f32;
-                let t = self.dc.rectangle(self.thread, x as f32, y as f32, x2, y2)?;
+                let x2 = (x + width) as i32;
+                let y2 = (y + height) as i32;
+                let t = self.dc.rectangle(self.thread, x as i32, y as i32, x2, y2)?;
                 self.residual().task_queue.push(t);
                 Ok(())
             },
@@ -317,14 +319,8 @@ impl<'thread, S: SendsDirective> YawwGdiSurface<'thread, S> {
         sweep_angle: Angle<f32>,
     ) -> crate::Result {
         let [x1, y1, x2, y2, asx, asy, aex, aey] = calc_posns(Arc {
-            center: Point {
-                x: xcenter,
-                y: ycenter,
-            },
-            radii: Vector {
-                x: xradius,
-                y: yradius,
-            },
+            center: Point::new(xcenter, ycenter),
+            radii: Vector::new(xradius, yradius),
             start_angle,
             sweep_angle,
             x_rotation: Angle { radians: 0.0 },
@@ -372,11 +368,13 @@ impl<'thread, S: SendsDirective> YawwGdiSurface<'thread, S> {
                      Point {
                          x: xcenter,
                          y: ycenter,
+                         ..
                      },
                  radii:
                      Vector {
                          x: xradius,
                          y: yradius,
+                         ..
                      },
              }| {
                 let x1 = (xcenter - xradius) as i32;
@@ -392,11 +390,14 @@ impl<'thread, S: SendsDirective> YawwGdiSurface<'thread, S> {
     }
 
     #[inline]
-    fn polygon(&mut self, pts: &[Point]) -> crate::Result {
+    fn polygon(&mut self, pts: &[Point<f32>]) -> crate::Result {
         let points: Vec<YawwPoint> = pts
             .iter()
             .copied()
-            .map(|Point { x, y }| YawwPoint { x, y })
+            .map(|Point { x, y, .. }| YawwPoint {
+                x: x as i32,
+                y: y as i32,
+            })
             .collect();
         let t = self.dc.polygon(self.thread, points)?;
         self.residual().task_queue.push(t);
@@ -515,7 +516,7 @@ impl<'thread, S: SendsDirective> Surface for YawwGdiSurface<'thread, S> {
     }
 
     #[inline]
-    fn fill_polygon(&mut self, points: &[Point]) -> crate::Result {
+    fn fill_polygon(&mut self, points: &[Point<f32>]) -> crate::Result {
         self.submit(Fill)?;
         self.polygon(points)
     }
@@ -720,16 +721,19 @@ impl<'thread> AsyncSurface for YawwGdiSurface<'thread> {
 }
 
 #[inline]
-fn calc_posns(arc: GeometricArc) -> [i32; 4] {
-    let GeometricArc { start, end, .. } = arc;
-    let x1 = cmp::min(arc.x1, arc.x2) as f32;
-    let y1 = cmp::min(arc.y1, arc.y2) as f32;
-    let x2 = cmp::max(arc.x1, arc.x2) as f32;
-    let y2 = cmp::max(arc.y1, arc.y2) as f32;
-    let rx = (x2 - x1) / 2.0;
-    let ry = (y2 - y1) / 2.0;
-    let cx = x1 + rx;
-    let cy = x2 + ry;
+fn calc_posns(arc: Arc<f32>) -> [i32; 8] {
+    let Arc {
+        center: Point { x: cx, y: cy, .. },
+        radii: Vector { x: rx, y: ry, .. },
+        start_angle,
+        sweep_angle,
+        ..
+    } = arc;
+
+    let x1 = (cx - rx) as i32;
+    let y1 = (cy - ry) as i32;
+    let x2 = (cx + rx) as i32;
+    let y2 = (cy + ry) as i32;
 
     let mut calc_posn = move |degree: f32| {
         (
@@ -738,7 +742,7 @@ fn calc_posns(arc: GeometricArc) -> [i32; 4] {
         )
     };
 
-    let (asx, asy) = calc_posn(start.radians());
-    let (aex, aey) = calc_posn(end.radians());
-    [asx, asy, aex, aey]
+    let (asx, asy) = calc_posn(start_angle.radians);
+    let (aex, aey) = calc_posn(sweep_angle.radians);
+    [x1, y1, x2, y2, asx, asy, aex, aey]
 }

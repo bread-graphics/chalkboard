@@ -2,8 +2,8 @@
 
 use lyon_geom::{Point, Vector};
 
-#[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Copy, Clone)]
 pub struct Ellipse {
-    pub center: Point,
-    pub radii: Vector,
+    pub center: Point<f32>,
+    pub radii: Vector<f32>,
 }

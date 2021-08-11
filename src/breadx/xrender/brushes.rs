@@ -103,7 +103,13 @@ impl Brushes {
                 }
                 FillRuleKey::LinearGradient(grad, angle, width, height) => {
                     // figure out the dimensions for the gradient
-                    let (p1, p2) = rectangle_angle(*width as f64, *height as f64, *angle);
+                    let (p1, p2) = rectangle_angle(
+                        *width as f64,
+                        *height as f64,
+                        Angle {
+                            radians: angle.into_inner(),
+                        },
+                    );
                     let (stops, color) = gradient_to_stops_and_color(grad);
 
                     // create the gradient proper
@@ -213,9 +219,11 @@ fn gradient_to_stops_and_color(grad: &Gradient) -> (TinyVec<[Fixed; 6]>, TinyVec
 
 // helper function to get points on the rectangle corresponding to angles
 #[inline]
-fn rectangle_angle(width: f64, height: f64, angle: Angle) -> (Pointfix, Pointfix) {
+fn rectangle_angle(width: f64, height: f64, angle: Angle<f32>) -> (Pointfix, Pointfix) {
     // fast paths
-    if angle.approx_eq(Angle::ZERO) || angle.approx_eq(Angle::FULL_CIRCLE) {
+    if approx::abs_diff_eq!(angle.radians, 0.0)
+        || approx::abs_diff_eq!(angle.radians, 2.0 * std::f32::consts::PI)
+    {
         let h2 = double_to_fixed(height / 2.0);
         return (
             Pointfix { x: 0, y: h2 },
@@ -224,7 +232,7 @@ fn rectangle_angle(width: f64, height: f64, angle: Angle) -> (Pointfix, Pointfix
                 y: h2,
             },
         );
-    } else if angle.approx_eq(Angle::QUARTER_CIRCLE) {
+    } else if approx::abs_diff_eq!(angle.radians, std::f32::consts::FRAC_PI_2) {
         let w2 = double_to_fixed(width / 2.0);
         return (
             Pointfix { x: w2, y: 0 },
@@ -233,7 +241,7 @@ fn rectangle_angle(width: f64, height: f64, angle: Angle) -> (Pointfix, Pointfix
                 y: double_to_fixed(height),
             },
         );
-    } else if angle.approx_eq(Angle::HALF_CIRCLE) {
+    } else if approx::abs_diff_eq!(angle.radians, std::f32::consts::PI) {
         let h2 = double_to_fixed(height / 2.0);
         return (
             Pointfix { x: 0, y: h2 },
@@ -242,7 +250,7 @@ fn rectangle_angle(width: f64, height: f64, angle: Angle) -> (Pointfix, Pointfix
                 y: h2,
             },
         );
-    } else if angle.approx_eq(Angle::THREE_QUARTERS_CIRCLE) {
+    } else if approx::abs_diff_eq!(angle.radians, 3.0 * std::f32::consts::FRAC_PI_2) {
         let w2 = double_to_fixed(width / 2.0);
         return (
             Pointfix {
@@ -257,7 +265,7 @@ fn rectangle_angle(width: f64, height: f64, angle: Angle) -> (Pointfix, Pointfix
     // the knowledge that the slope, which we can calculate via atan(angle), is y/x. given the center, we can use
     // this to calculate the x at y=height and the y at x=width, and figure out which one fits
     // then do the same at y = 0 and x = 0
-    let slope = angle.radians().atan() as f64;
+    let slope = angle.radians.atan() as f64;
     let xc = width / 2.0;
     let yc = height / 2.0;
 

@@ -13,7 +13,7 @@ lyon_geom = "0.17"
 lyon_path = "0.17"
 lyon_tessellation = "0.17"
 num-traits = "0.2"
-ordered-float = "2.1"
+ordered-float = "2.7"
 tinyvec = { version = "1.1", features = ["alloc"] }
 
 [dev-dependencies]

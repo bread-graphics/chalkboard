@@ -29,6 +29,8 @@ pub enum Error {
     CannotOnMonitor,
     /// We already ran the main loop.
     AlreadyRanMainLoop,
+    /// Tesselation failed.
+    FailedToTesselate,
     /// Cannot draw on the given window.
     NoValidDraw(NonZeroUsize),
     /// A BreadX error occurred.
@@ -63,6 +65,7 @@ impl fmt::Display for Error {
             Self::CannotOnMonitor => f.write_str("Cannot run operation on monitor"),
             Self::AlreadyRanMainLoop => f.write_str("Already ran the main loop"),
             Self::NoValidDraw(w) => write!(f, "Window of ID {:#010x} cannot be drawn upon", w),
+            Self::FailedToTesselate => f.write_str("Unable to tesselate shape"),
             #[cfg(all(unix, feature = "breadx"))]
             Self::BreadX(bx) => fmt::Display::fmt(bx, f),
             #[cfg(all(windows, feature = "yaww"))]

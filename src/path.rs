@@ -9,7 +9,7 @@ use std::array::IntoIter as ArrayIter;
 pub(crate) fn path_to_lines(
     i: impl IntoIterator<Item = PathEvent>,
 ) -> impl Iterator<Item = LineSegment<f32>> {
-    i.into_iter().flattened().filter_map(|pe| match pe {
+    i.into_iter().flattened(1.0).filter_map(|pe| match pe {
         PathEvent::Begin { .. } => None,
         PathEvent::Line { from, to } => Some(LineSegment { from, to }),
         PathEvent::End { last, first, close } => {
@@ -29,8 +29,8 @@ pub(crate) fn path_to_lines(
 #[inline]
 pub(crate) fn path_to_points(
     i: impl IntoIterator<Item = PathEvent>,
-) -> impl Iterator<Item = Point> {
-    i.into_iter().flattened().map(|pe| match pe {
+) -> impl Iterator<Item = Point<f32>> {
+    i.into_iter().flattened(1.0).map(|pe| match pe {
         PathEvent::Begin { at } => at,
         PathEvent::Line { to, .. } => to,
         PathEvent::End { last, .. } => last,
@@ -42,7 +42,7 @@ pub(crate) fn path_to_points(
 pub(crate) fn path_from_curve(curve: CubicBezierSegment<f32>) -> Path {
     let mut builder = Path::builder();
     builder.begin(curve.from);
-    builder.cubic_bezier_to(curve.ctrl1, curve.ctrl2, curve.end);
+    builder.cubic_bezier_to(curve.ctrl1, curve.ctrl2, curve.to);
     builder.end(false);
     builder.build()
 }
@@ -69,7 +69,7 @@ pub(crate) fn path_from_arc_closed(arc: Arc<f32>) -> Option<Path> {
 }
 
 #[inline]
-fn build_arc(builder: Builder, pt_iter: impl Iterator<Item = Point>) -> Builder {
+fn build_arc(builder: Builder, pt_iter: impl Iterator<Item = Point<f32>>) -> Builder {
     pt_iter.fold(builder, |mut builder, point| {
         builder.line_to(point);
         builder
