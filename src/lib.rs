@@ -7,6 +7,7 @@ mod error;
 pub mod color;
 pub mod fill;
 pub mod gradient;
+pub mod image;
 pub mod intensity;
 pub mod surface;
 
@@ -25,6 +26,7 @@ pub use ellipse::*;
 pub use error::*;
 pub use fill::*;
 pub use gradient::*;
+pub use image::*;
 pub use intensity::*;
 pub use surface::*;
 

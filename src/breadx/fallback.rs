@@ -3,15 +3,17 @@
 //! Fallback BreadX software renderer. This uses the native xproto commands for drawing. Note that these are
 //! usually slower than their XRender or GLX equivalents.
 
+use super::image;
 use crate::{
     fill::FillRule,
     surface::{Surface, SurfaceFeatures},
     util::clamp,
-    Color,
+    Color, Image, ImageFormat,
 };
 use breadx::{
     auto::xproto::{
-        Arc as XArc, Colormap, CoordMode, Point as XPoint, PolyShape, Rectangle as XRect, Segment,
+        Arc as XArc, Colormap, CoordMode, GetGeometryReply, Pixmap, Point as XPoint, PolyShape,
+        Rectangle as XRect, Segment, Window,
     },
     display::{prelude::*, Display, DisplayBase, GcParameters},
     Drawable, Gcontext,
@@ -21,6 +23,7 @@ use std::{
     cmp::Ordering,
     collections::hash_map::{Entry, HashMap},
     mem::{self, MaybeUninit},
+    num::NonZeroUsize,
     ptr,
 };
 
@@ -28,6 +31,7 @@ use std::{
 use breadx::display::AsyncConnection;
 
 const FEATURES: SurfaceFeatures = SurfaceFeatures {
+    transparency: false,
     gradients: false,
     floats: false,
 };
@@ -322,6 +326,36 @@ impl<'dpy, Dpy: Display + ?Sized> Surface for FallbackBreadxSurface<'dpy, Dpy> {
     }
 
     #[inline]
+    fn create_image(
+        &mut self,
+        image_bytes: &[u8],
+        width: u32,
+        height: u32,
+        image_format: ImageFormat,
+    ) -> crate::Result<Image> {
+        let target = self.target;
+        let pixmap = image::image_to_pixmap(
+            &mut self.display,
+            target,
+            image_bytes,
+            width,
+            height,
+            image_format,
+        )?;
+
+        Ok(Image::from_raw(
+            NonZeroUsize::new(pixmap.xid as usize).expect("Pixmap should never be zero"),
+        ))
+    }
+
+    #[inline]
+    fn destroy_image(&mut self, image: Image) -> crate::Result {
+        let pixmap = Pixmap::const_from_xid(image.into_raw().get() as u32);
+        pixmap.free(self.display)?;
+        Ok(())
+    }
+
+    #[inline]
     fn draw_line(&mut self, x1: f32, y1: f32, x2: f32, y2: f32) -> crate::Result {
         self.submit_draw(Stroke)?;
         self.gc.draw_line(
@@ -571,6 +605,32 @@ impl<'dpy, Dpy: Display + ?Sized> Surface for FallbackBreadxSurface<'dpy, Dpy> {
             )
             .collect();
         self.gc.fill_arcs(self.display, self.target, arcs)?;
+        Ok(())
+    }
+
+    #[inline]
+    fn copy_image(
+        &mut self,
+        src: Image,
+        src_x: i32,
+        src_y: i32,
+        dst_x: i32,
+        dst_y: i32,
+        width: u32,
+        height: u32,
+    ) -> crate::Result {
+        let pixmap = Pixmap::const_from_xid(src.into_raw().get() as u32);
+        self.display.copy_area(
+            pixmap,
+            self.target,
+            self.gc,
+            src_x as _,
+            src_y as _,
+            width as _,
+            height as _,
+            dst_x as _,
+            dst_y as _,
+        )?;
         Ok(())
     }
 }

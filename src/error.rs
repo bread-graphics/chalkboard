@@ -33,6 +33,8 @@ pub enum Error {
     FailedToTesselate,
     /// Cannot draw on the given window.
     NoValidDraw(NonZeroUsize),
+    /// Cannot create an image.
+    ImageNotAvailable,
     /// A BreadX error occurred.
     #[cfg(all(unix, feature = "breadx"))]
     BreadX(BreadError),
@@ -66,6 +68,7 @@ impl fmt::Display for Error {
             Self::AlreadyRanMainLoop => f.write_str("Already ran the main loop"),
             Self::NoValidDraw(w) => write!(f, "Window of ID {:#010x} cannot be drawn upon", w),
             Self::FailedToTesselate => f.write_str("Unable to tesselate shape"),
+            Self::ImageNotAvailable => f.write_str("Unable to create image"),
             #[cfg(all(unix, feature = "breadx"))]
             Self::BreadX(bx) => fmt::Display::fmt(bx, f),
             #[cfg(all(windows, feature = "yaww"))]

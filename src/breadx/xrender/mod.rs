@@ -29,6 +29,7 @@ use lyon_tessellation::{
     StrokeOptions, StrokeTessellator, StrokeVertex, StrokeVertexConstructor, VertexBuffers,
 };
 use ordered_float::NotNan;
+use slab::Slab;
 use std::{
     array::IntoIter as ArrayIter,
     cmp,
@@ -47,6 +48,7 @@ mod brushes;
 use brushes::Brushes;
 
 const FEATURES: SurfaceFeatures = SurfaceFeatures {
+    transparency: true,
     gradients: true,
     floats: true,
 };
@@ -106,6 +108,9 @@ pub struct RenderBreadxSurface<'dpy, Dpy: ?Sized> {
     stroke_color: XrColor,
     fill: FillRule,
     line_width: i32,
+
+    // map associating images to pixmaps containing those images
+    images: Option<HashMap<Image, PixmapPicture>>,
 
     tesselation: Option<Tesselation>,
 
@@ -173,6 +178,7 @@ pub struct RenderResidual {
     width: u16,
     height: u16,
     depth: u8,
+    images: Option<HashMap<Image, ImageBrush>>,
     tesselation: Option<Tesselation>,
 }
 
@@ -182,6 +188,11 @@ impl RenderResidual {
         self.mask.free(display)?;
         self.solid.free(display)?;
         self.brushes.take().unwrap().free(display)?;
+        self.images
+            .take()
+            .unwrap()
+            .into_iter()
+            .try_for_each(|(_, pic)| pic.free(display))?;
         let _ = self.tesselation.take();
         mem::forget(self);
         Ok(())
@@ -480,6 +491,7 @@ impl<'dpy, Dpy: ?Sized> RenderBreadxSurface<'dpy, Dpy> {
             window_format: self.window_format,
             a8_format: self.a8_format,
             tesselation: Some(self.tesselation.take().expect("NPP")),
+            images: Some(self.images.take().expect("NPP")),
         };
         mem::forget(self);
         res
@@ -524,6 +536,7 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
             line_width: 1,
             brushes: residual.brushes.take(),
             tesselation: residual.tesselation.take(),
+            images: residual.images.take(),
             dropper: DebugContainer::new(Dropper::<'dpy, Dpy>::sync_dropper),
         };
 
@@ -577,6 +590,7 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
                     fill_tesselator: FillTessellator::new().into(),
                     stroke_tesselator: StrokeTessellator::new().into(),
                 }),
+                images: Some(HashMap::new()),
             },
         )
     }
@@ -589,6 +603,11 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
             .take()
             .unwrap()
             .free(self.display.inner_mut())?;
+        self.images
+            .take()
+            .unwrap()
+            .into_iter()
+            .try_for_each(|_, image| image.free(self.display.inner_mut()))?;
         self.display.inner_mut().set_checked(self.old_checked);
         Ok(())
     }
@@ -962,6 +981,64 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
             -fixed_to_double(min_y) as i16,
         )
     }
+
+    #[inline]
+    fn image_to_image_brush(
+        &mut self,
+        image_bytes: &[u8],
+        width: u32,
+        height: u32,
+        format: ImageFormat,
+    ) -> crate::Result<Image> {
+        let target = self.target;
+        let (pixmap, visualid, depth) = super::image::image_to_pixmap_with_depth_and_visualid(
+            self.display.inner_mut(),
+            target,
+            image_bytes,
+            width,
+            height,
+            format,
+        )?;
+
+        // if we're not dealing with alpha channels, the pixmap is valid as-is
+        let pixmap = if format.has_alpha_component() {
+            pixmap
+        } else {
+            // create a new image based on the alpha components of the image
+            let heap_space: Box<[u8]> =
+                unsafe { Box::new_zeroed_slice((width * height) as usize).assume_init() };
+            let visual = self
+                .display
+                .inner()
+                .visual_id_to_visual(visualid)
+                .ok_or(crate::Error::ImageNotAvailable)?;
+            let mut alpha_image = breadx::Image::new(
+                self.display.inner(),
+                Some(visual),
+                depth,
+                breadx::ImageFormat::ZPixmap,
+                0,
+                heap_space,
+                width as usize,
+                height as usize,
+                8,
+                None,
+            )
+            .ok_or(crate::Error::ImageNotAvailable)?;
+            crate::image::iterate_pixels(image_bytes, width, height, format).fold(
+                (0, 0),
+                |(x, y), pixel| {
+                    let pixel = pixel as u8;
+                    alpha_image.set_pixel(x, y, pixel);
+
+                    match x + 1 {
+                        x if x == width => (0, y + 1),
+                        x => (x, y),
+                    }
+                },
+            );
+        };
+    }
 }
 
 #[derive(Default)]
@@ -1094,6 +1171,31 @@ impl<'dpy, Dpy: Display + ?Sized> Surface for RenderBreadxSurface<'dpy, Dpy> {
     fn flush(&mut self) -> crate::Result {
         self.display.inner_mut().synchronize()?;
         Ok(())
+    }
+
+    #[inline]
+    fn create_image(
+        &mut self,
+        image_bytes: &[u8],
+        width: u32,
+        height: u32,
+        format: ImageFormat,
+    ) -> crate::Result<Image> {
+        let target = self.target;
+        let pixmap = super::image::image_to_pixmap(
+            self.display.inner_mut(),
+            target,
+            image_bytes,
+            width,
+            height,
+            format,
+        )?;
+
+        // create a matching picture
+        let picture_format = self
+            .display
+            .find_standard_format(match format {})
+            .ok_or(crate::Error::ImageNotAvailable)?;
     }
 
     #[inline]

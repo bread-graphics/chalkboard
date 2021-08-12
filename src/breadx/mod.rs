@@ -7,3 +7,5 @@ mod xrender;
 pub use fallback::*;
 #[cfg(feature = "xrender")]
 pub use xrender::*;
+
+pub(crate) mod image;

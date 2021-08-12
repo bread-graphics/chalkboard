@@ -2,7 +2,7 @@
 
 use crate::{
     fill::FillRule, path_from_arc, path_from_arc_closed, path_from_curve, path_to_lines,
-    path_to_points, Color, Ellipse,
+    path_to_points, Color, Ellipse, Image, ImageFormat,
 };
 use lyon_geom::{Angle, Arc, CubicBezierSegment, LineSegment, Point, Rect, Size, Vector};
 use lyon_path::{
@@ -21,11 +21,32 @@ use futures_lite::{
 /// Features that a surface can support.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct SurfaceFeatures {
+    /// Does this surface support transparancy?
+    pub transparency: bool,
     /// Does this surface support drawing gradients?
     pub gradients: bool,
     /// Does this surface support floats? If not, all numbers will be rounded
     /// down.
     pub floats: bool,
+}
+
+/// Specifications for copying an image to the surface.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ImageCopySpecs {
+    /// The image to copy from.
+    pub image: Image,
+    /// The X-coordinate to start copying from in the image.
+    pub src_x: i32,
+    /// The Y-coordinate to start copying at in the image.
+    pub src_y: i32,
+    /// The X-coordinate in the surface to put the image.
+    pub dst_x: i32,
+    /// The Y-coordinate in the surface to put the image.
+    pub dst_y: i32,
+    /// The width of the area of the image to copy.
+    pub width: u32,
+    /// The height of the area of the image to copy.
+    pub height: u32,
 }
 
 /// A surface which drawing commands can be applied to.
@@ -41,6 +62,17 @@ pub trait Surface {
 
     /// Flush all commands passed to this surface to its target.
     fn flush(&mut self) -> crate::Result;
+
+    /// Create a new `Image`. This `Image` can be used with other `Surface`s of the same type as this one.
+    fn create_image(
+        &mut self,
+        image_bytes: &[u8],
+        width: u32,
+        height: u32,
+        image_format: ImageFormat,
+    ) -> crate::Result<Image>;
+    /// Deallocate the server-side memory for an `Image`.
+    fn destroy_image(&mut self, image: Image) -> crate::Result;
 
     /// Draw a single line.
     fn draw_line(&mut self, x1: f32, y1: f32, x2: f32, y2: f32) -> crate::Result;
@@ -368,6 +400,33 @@ pub trait Surface {
             })
             .collect();
         self.fill_arcs(&arcs)
+    }
+
+    /// Copy the contents of an image to this surface.
+    fn copy_image(
+        &mut self,
+        src: Image,
+        src_x: i32,
+        src_y: i32,
+        dst_x: i32,
+        dst_y: i32,
+        width: u32,
+        height: u32,
+    ) -> crate::Result;
+
+    /// Copy several images to this surface.
+    fn copy_images(&mut self, images: &[ImageCopySpecs]) -> crate::Result {
+        images.iter().copied().try_for_each(
+            |ImageCopySpecs {
+                 image,
+                 src_x,
+                 src_y,
+                 dst_x,
+                 dst_y,
+                 width,
+                 height,
+             }| self.copy_image(image, src_x, src_y, dst_x, dst_y, width, height),
+        )
     }
 }
 
