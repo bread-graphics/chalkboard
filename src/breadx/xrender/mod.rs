@@ -47,6 +47,8 @@ use futures_lite::future;
 mod brushes;
 use brushes::Brushes;
 
+mod image;
+
 const FEATURES: SurfaceFeatures = SurfaceFeatures {
     transparency: true,
     gradients: true,
@@ -178,7 +180,7 @@ pub struct RenderResidual {
     width: u16,
     height: u16,
     depth: u8,
-    images: Option<HashMap<Image, ImageBrush>>,
+    images: Option<HashMap<Image, PixmapPicture>>,
     tesselation: Option<Tesselation>,
 }
 
@@ -981,64 +983,6 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
             -fixed_to_double(min_y) as i16,
         )
     }
-
-    #[inline]
-    fn image_to_image_brush(
-        &mut self,
-        image_bytes: &[u8],
-        width: u32,
-        height: u32,
-        format: ImageFormat,
-    ) -> crate::Result<Image> {
-        let target = self.target;
-        let (pixmap, visualid, depth) = super::image::image_to_pixmap_with_depth_and_visualid(
-            self.display.inner_mut(),
-            target,
-            image_bytes,
-            width,
-            height,
-            format,
-        )?;
-
-        // if we're not dealing with alpha channels, the pixmap is valid as-is
-        let pixmap = if format.has_alpha_component() {
-            pixmap
-        } else {
-            // create a new image based on the alpha components of the image
-            let heap_space: Box<[u8]> =
-                unsafe { Box::new_zeroed_slice((width * height) as usize).assume_init() };
-            let visual = self
-                .display
-                .inner()
-                .visual_id_to_visual(visualid)
-                .ok_or(crate::Error::ImageNotAvailable)?;
-            let mut alpha_image = breadx::Image::new(
-                self.display.inner(),
-                Some(visual),
-                depth,
-                breadx::ImageFormat::ZPixmap,
-                0,
-                heap_space,
-                width as usize,
-                height as usize,
-                8,
-                None,
-            )
-            .ok_or(crate::Error::ImageNotAvailable)?;
-            crate::image::iterate_pixels(image_bytes, width, height, format).fold(
-                (0, 0),
-                |(x, y), pixel| {
-                    let pixel = pixel as u8;
-                    alpha_image.set_pixel(x, y, pixel);
-
-                    match x + 1 {
-                        x if x == width => (0, y + 1),
-                        x => (x, y),
-                    }
-                },
-            );
-        };
-    }
 }
 
 #[derive(Default)]
@@ -1182,7 +1126,7 @@ impl<'dpy, Dpy: Display + ?Sized> Surface for RenderBreadxSurface<'dpy, Dpy> {
         format: ImageFormat,
     ) -> crate::Result<Image> {
         let target = self.target;
-        let pixmap = super::image::image_to_pixmap(
+        let pp = image::image_to_pixmap_picture(
             self.display.inner_mut(),
             target,
             image_bytes,
@@ -1190,12 +1134,20 @@ impl<'dpy, Dpy: Display + ?Sized> Surface for RenderBreadxSurface<'dpy, Dpy> {
             height,
             format,
         )?;
+        let image = Image::from_raw(
+            NonZeroUsize::new(pp.pixmap.xid as usize).expect("Pixmap should never be zero"),
+        );
+        self.images.as_mut().expect("NPP").insert(image, pp);
+        Ok(image)
+    }
 
-        // create a matching picture
-        let picture_format = self
-            .display
-            .find_standard_format(match format {})
-            .ok_or(crate::Error::ImageNotAvailable)?;
+    #[inline]
+    fn destroy_image(&mut self, image: Image) -> crate::Result {
+        if let Some(pp) = self.images.as_mut().expect("NPP").remove(&image) {
+            pp.free()?;
+        }
+
+        Ok(())
     }
 
     #[inline]

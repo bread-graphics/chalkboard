@@ -12,15 +12,14 @@ pub(crate) fn image_to_pixmap_with_depth_and_visualid<Dpy: Display + ?Sized>(
     image_format: ImageFormat,
 ) -> crate::Result<(Pixmap, Visualid, u8)> {
     // we need the target's depth and visual in order to construct the image
-    let window = Window::const_from_xid(self.target.xid);
-    let geom_key = window.geometry(self.display)?;
-    let attr_key = window.window_attributes(self.display)?;
+    let window = Window::const_from_xid(target.xid);
+    let geom_key = window.geometry(display)?;
+    let attr_key = window.window_attributes(display)?;
 
-    let GetGeometryReply { depth, .. } = self.display.resolve_request(geom_key)?;
-    let GetWindowAttributesReply { visualid, .. } = self.display.resolve_request(attr_key)?;
+    let GetGeometryReply { depth, .. } = display.resolve_request(geom_key)?;
+    let GetWindowAttributesReply { visualid, .. } = display.resolve_request(attr_key)?;
 
-    let visual = self
-        .display
+    let visual = display
         .visual_id_to_visual(visualid)
         .ok_or(crate::Error::ImageNotAvailable)?;
 
@@ -29,13 +28,12 @@ pub(crate) fn image_to_pixmap_with_depth_and_visualid<Dpy: Display + ?Sized>(
         ImageFormat::Grayscale => 1,
         ImageFormat::Rgb | ImageFormat::Rgba => 4,
     };
-    let heap_space: Box<[u8]> = unsafe {
-        Box::new_zeroed_slice(quantum * (width as usize) * (height as usize)).assume_init()
-    };
+    let heap_space: Box<[u8]> =
+        unsafe { Box::new_zeroed_slice(quantum * (width * height) as usize).assume_init() };
 
     // construct the image
     let mut image = breadx::Image::new(
-        &self.display,
+        &display,
         Some(visual),
         depth,
         breadx::ImageFormat::ZPixmap,
@@ -70,7 +68,7 @@ pub(crate) fn image_to_pixmap_with_depth_and_visualid<Dpy: Display + ?Sized>(
     );
 
     // create a pixmap and draw the image onto it
-    let pixmap = self.display.create_pixmap_from_image(self.window, &image)?;
+    let pixmap = display.create_pixmap_from_image(self.window, &image)?;
 
     Ok((pixmap, visualid, depth))
 }
