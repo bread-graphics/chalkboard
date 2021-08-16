@@ -26,6 +26,7 @@ use yaww::{
 };
 
 const FEATURES: SurfaceFeatures = SurfaceFeatures {
+    transparency: false,
     gradients: false,
     floats: false,
 };
@@ -47,6 +48,7 @@ pub struct YawwGdiSurfaceResidual {
     task_queue: DebugContainer<Vec<Task<yaww::Result<()>>>>,
     pens: HashMap<(Color, usize), Pen>,
     brushes: HashMap<Color, Brush>,
+    image_dcs: HashMap<Dc, GdiObject>,
 }
 
 impl YawwGdiSurfaceResidual {
@@ -56,6 +58,7 @@ impl YawwGdiSurfaceResidual {
             clear_brush,
             pens,
             brushes,
+            image_dcs,
             ..
         } = self;
         pens.into_iter()
@@ -67,6 +70,13 @@ impl YawwGdiSurfaceResidual {
             .into_iter()
             .try_for_each::<_, crate::Result>(|(_, b)| {
                 let _ = b.delete_gdi(thread)?;
+                Ok(())
+            })?;
+        image_dcs
+            .into_iter()
+            .try_for_each::<_, crate::Result>(|(dc, default_image)| {
+                let _ = dc.select_object(default_image)?;
+                let _ = dc.delete_dc(thread)?;
                 Ok(())
             })?;
 
@@ -97,6 +107,7 @@ impl<'thread, S> YawwGdiSurface<'thread, S> {
                 task_queue: DebugContainer::new(vec![]),
                 pens: HashMap::new(),
                 brushes: HashMap::new(),
+                image_dcs: Vec::new(),
             },
         )
     }
@@ -614,6 +625,58 @@ impl<'thread> AsyncSurface for YawwGdiSurface<'thread> {
     }
 
     #[inline]
+    fn create_image(
+        &mut self,
+        image_bytes: &[u8],
+        width: u32,
+        height: u32,
+        format: ImageFormat,
+    ) -> crate::Result<Image> {
+        // create a compatible DC
+        let compat_dc = self.dc.create_compatible_dc(self.thread)?.wait()?;
+
+        // create a bitmap using that dc
+        let bitmap = compat_dc
+            .create_compatible_bitmap(self.thread, width as _, height as _)?
+            .wait()?;
+        let old_image = compat_dc.select_object(bitmap)?.wait()?;
+
+        // draw pixels onto it
+        compat_dc
+            .draw_pixels(
+                self.thread,
+                crate::image::iterate_pixels(image_bytes, width, height, format).map(|pixel| {
+                    pixel
+                        .iter()
+                        .copied()
+                        .enumerate()
+                        .rfold(0, |color, (i, channel)| {
+                            color | ((channel as u32) << (i * 8))
+                        })
+                }),
+            )?
+            .wait()?;
+
+        // insert into images map
+        self.residual().image_dcs.insert(compat_dc, old_image);
+
+        // return
+        Ok(Image::from_raw(compat_dc.into_raw()))
+    }
+
+    #[inline]
+    fn destroy_image(&mut self, image: Image) -> crate::Result {
+        let dc = Dc::from_raw(image.into_raw());
+        if let Some(old_image) = self.residual().image_dcs.remove(&dc) {
+            let bitmap = dc.select_object(self.thread, old_image)?.wait()?;
+            let _ = bitmap.delete_gdi(self.thread)?;
+            let _ = dc.delete_dc(self.thread)?;
+        }
+
+        Ok(())
+    }
+
+    #[inline]
     fn draw_line(&mut self, x1: i32, y1: i32, x2: i32, y2: i32) -> crate::Result {
         self.submit(Stroke)?;
         self.line(x1, y1, x2, y2)
@@ -717,6 +780,38 @@ impl<'thread> AsyncSurface for YawwGdiSurface<'thread> {
     fn fill_ellipses(&mut self, rects: &[Rectangle]) -> crate::Result {
         self.submit(Fill)?;
         self.ellipses(rects)
+    }
+
+    #[inline]
+    fn copy_image(
+        &mut self,
+        src: Image,
+        src_x: i32,
+        src_y: i32,
+        dst_x: i32,
+        dst_y: i32,
+        width: u32,
+        height: u32,
+    ) -> crate::Result {
+        let src = Dc::from_raw(src.into_raw());
+
+        if !self.image_dcs.contains_key(&src) {
+            return Err(crate::Error::ImageNotAvailable);
+        }
+
+        let t = src.bit_blt(
+            self.thread,
+            self.dc,
+            src_x,
+            src_y,
+            width,
+            height,
+            dst_x,
+            dst_y,
+            BitBltOp::SrcCopy,
+        )?;
+        self.residual.task_queue.push(t);
+        Ok(())
     }
 }
 

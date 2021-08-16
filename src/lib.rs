@@ -1,6 +1,7 @@
 // MIT/Apache2 License
 
 //#![forbid(unsafe_code)]
+#![feature(new_uninit)]
 
 mod error;
 

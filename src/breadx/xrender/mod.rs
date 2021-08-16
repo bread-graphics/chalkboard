@@ -5,7 +5,7 @@ use crate::{
     gradient::Gradient,
     surface::{Surface, SurfaceFeatures},
     util::DebugContainer,
-    Color,
+    Color, Image, ImageFormat,
 };
 use breadx::{
     auto::{
@@ -29,13 +29,13 @@ use lyon_tessellation::{
     StrokeOptions, StrokeTessellator, StrokeVertex, StrokeVertexConstructor, VertexBuffers,
 };
 use ordered_float::NotNan;
-use slab::Slab;
 use std::{
     array::IntoIter as ArrayIter,
     cmp,
     collections::hash_map::{Entry, HashMap},
     iter,
     mem::{self, ManuallyDrop},
+    num::NonZeroUsize,
 };
 use tinyvec::TinyVec;
 
@@ -609,7 +609,7 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
             .take()
             .unwrap()
             .into_iter()
-            .try_for_each(|_, image| image.free(self.display.inner_mut()))?;
+            .try_for_each(|(_, image)| image.free(self.display.inner_mut()))?;
         self.display.inner_mut().set_checked(self.old_checked);
         Ok(())
     }
@@ -1125,10 +1125,10 @@ impl<'dpy, Dpy: Display + ?Sized> Surface for RenderBreadxSurface<'dpy, Dpy> {
         height: u32,
         format: ImageFormat,
     ) -> crate::Result<Image> {
-        let target = self.target;
+        let target = self.parent;
         let pp = image::image_to_pixmap_picture(
-            self.display.inner_mut(),
-            target,
+            self.display,
+            target.into(),
             image_bytes,
             width,
             height,
@@ -1144,7 +1144,7 @@ impl<'dpy, Dpy: Display + ?Sized> Surface for RenderBreadxSurface<'dpy, Dpy> {
     #[inline]
     fn destroy_image(&mut self, image: Image) -> crate::Result {
         if let Some(pp) = self.images.as_mut().expect("NPP").remove(&image) {
-            pp.free()?;
+            pp.free(self.display.inner_mut())?;
         }
 
         Ok(())
@@ -1244,6 +1244,37 @@ impl<'dpy, Dpy: Display + ?Sized> Surface for RenderBreadxSurface<'dpy, Dpy> {
     #[inline]
     fn fill_rectangles(&mut self, rects: &[Rect<f32>]) -> crate::Result {
         self.fill_rectangles_internal(rects.iter().copied())
+    }
+
+    #[inline]
+    fn copy_image(
+        &mut self,
+        src: Image,
+        src_x: i32,
+        src_y: i32,
+        dst_x: i32,
+        dst_y: i32,
+        width: u32,
+        height: u32,
+    ) -> crate::Result {
+        if let Some(src) = self.images.as_mut().expect("NPP").get(&src).copied() {
+            src.picture.composite(
+                self.display.inner_mut(),
+                PictOp::Over,
+                Picture::const_from_xid(0),
+                self.target,
+                src_x as _,
+                src_y as _,
+                0,
+                0,
+                dst_x as _,
+                dst_y as _,
+                width as _,
+                height as _,
+            )?;
+        }
+
+        Ok(())
     }
 }
 
