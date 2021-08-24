@@ -229,8 +229,8 @@ pub trait Surface {
         yradius: f32,
     ) -> crate::Result {
         self.draw_arc(
-            xradius,
-            yradius,
+            xcenter,
+            ycenter,
             xradius,
             yradius,
             Angle { radians: 0.0 },

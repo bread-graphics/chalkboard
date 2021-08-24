@@ -447,6 +447,7 @@ impl<'dpy, Dpy: Display + ?Sized> Surface for FallbackBreadxSurface<'dpy, Dpy> {
             start_angle,
             sweep_angle,
         );
+        println!("arc is {:?}", &arc);
         self.gc.draw_arc(self.display, self.target, arc)?;
         Ok(())
     }
@@ -565,6 +566,7 @@ impl<'dpy, Dpy: Display + ?Sized> Surface for FallbackBreadxSurface<'dpy, Dpy> {
             start_angle,
             sweep_angle,
         );
+        println!("arc is {:?}", &arc);
         self.gc.fill_arc(self.display, self.target, arc)?;
         Ok(())
     }

@@ -15,6 +15,8 @@ use yaww::{
     ShowWindowCommand, WcFunctions, WindowFunctions, WindowStyle,
 };
 
+mod verification_image;
+
 #[cfg(all(windows, feature = "yaww"))]
 const CLASS_NAME: ConstCstr = ConstCstr("TestWindow\0");
 #[cfg(all(windows, feature = "yaww"))]
@@ -63,28 +65,7 @@ fn main() -> Result {
             };
 
             // begin painting using the surface
-            surface.set_stroke(Color::BLACK).unwrap();
-            surface
-                .set_fill(FillRule::SolidColor(
-                    Color::new(0.0, 0.0, 1.0, 1.0).unwrap(),
-                ))
-                .unwrap();
-            surface.set_line_width(8).unwrap();
-
-            surface.fill_rectangle(50, 50, 150, 100).unwrap();
-            surface.draw_rectangle(50, 50, 150, 100).unwrap();
-
-            surface
-                .set_fill(FillRule::SolidColor(
-                    Color::new(0.0, 1.0, 0.0, 1.0).unwrap(),
-                ))
-                .unwrap();
-
-            surface.fill_ellipse(50, 200, 150, 300).unwrap();
-            surface.draw_ellipse(50, 200, 150, 300).unwrap();
-            surface.draw_line(50, 200, 150, 250).unwrap();
-
-            surface.flush().unwrap();
+            verification_image::verification_image(&mut surface).expect("Failed to draw ver. image");
 
             // cache the residual
             residual = Some(surface.into_residual());

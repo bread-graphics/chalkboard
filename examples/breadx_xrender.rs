@@ -9,6 +9,8 @@ use chalkboard::{
     Color, FillRule, Result, Surface,
 };
 
+mod verification_image;
+
 #[cfg(all(unix, feature = "xrender"))]
 fn main() -> Result {
     env_logger::init();
@@ -73,24 +75,7 @@ fn main() -> Result {
                 };
 
                 // draw some shapes
-                surface.set_stroke(Color::BLACK)?;
-                surface.set_fill(FillRule::SolidColor(
-                    Color::new(0.0, 0.0, 1.0, 1.0).unwrap(),
-                ))?;
-                surface.set_line_width(8)?;
-
-                surface.fill_rectangle(50, 50, 150, 100)?;
-                surface.draw_rectangle(50, 50, 150, 100)?;
-
-                surface.set_fill(FillRule::SolidColor(
-                    Color::new(0.0, 1.0, 0.0, 1.0).unwrap(),
-                ))?;
-
-                surface.fill_ellipse(50, 200, 150, 300)?;
-                surface.draw_ellipse(50, 200, 150, 300)?;
-                surface.draw_line(50, 200, 150, 250)?;
-
-                surface.flush()?;
+                verification_image::verification_image(&mut surface)?;
 
                 // cache the residual
                 residual = Some(surface.into_residual());

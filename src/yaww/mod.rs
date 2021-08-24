@@ -19,7 +19,7 @@ use yaww::{
     brush::{Brush, BrushFunctions},
     color::Color as YawwColor,
     dc::{BitBltOp, Dc},
-    gdiobj::{GdiObject, GdiFunctions, StockObject},
+    gdiobj::{AsGdiObject, GdiFunctions, GdiObject, StockObject},
     pen::{Pen, PenFunctions, PenStyle},
     task::Task,
     Point as YawwPoint, SendsDirective,
@@ -63,20 +63,20 @@ impl YawwGdiSurfaceResidual {
         } = self;
         pens.into_iter()
             .try_for_each::<_, crate::Result>(|(_, p)| {
-                let _ = p.delete_gdi(thread)?;
+                let _ = p.delete(thread)?;
                 Ok(())
             })?;
         brushes
             .into_iter()
             .try_for_each::<_, crate::Result>(|(_, b)| {
-                let _ = b.delete_gdi(thread)?;
+                let _ = b.delete(thread)?;
                 Ok(())
             })?;
         image_dcs
             .into_iter()
             .try_for_each::<_, crate::Result>(|(dc, default_image)| {
-                let _ = dc.select_object(default_image)?;
-                let _ = dc.delete_dc(thread)?;
+                let _ = dc.select_object(thread, default_image)?;
+                let _ = dc.delete(thread)?;
                 Ok(())
             })?;
 
@@ -138,7 +138,10 @@ impl<'thread, S: SendsDirective> YawwGdiSurface<'thread, S> {
                     .get_stock_object(StockObject::NullBrush)?
                     .wait()
                     .ok_or(crate::Error::StaticMsg("Could not acquire null brush"))?;
-                Ok(*self.residual().clear_brush.insert(cb))
+                Ok(*self
+                    .residual()
+                    .clear_brush
+                    .insert(Brush::from_gdi_object(cb)))
             }
         }
     }
@@ -479,12 +482,15 @@ impl<'thread, S: SendsDirective> Surface for YawwGdiSurface<'thread, S> {
         let bitmap = compat_dc
             .create_compatible_bitmap(self.thread, width as _, height as _)?
             .wait()?;
-        let old_image = compat_dc.select_object(bitmap)?.wait()?;
+        let old_image = compat_dc.select_object(self.thread, bitmap)?.wait()?;
 
         // draw pixels onto it
         compat_dc
             .draw_pixels(
                 self.thread,
+                0,
+                0,
+                width as _,
                 crate::image::iterate_pixels(image_bytes, width, height, format).map(|pixel| {
                     pixel
                         .iter()
@@ -509,8 +515,8 @@ impl<'thread, S: SendsDirective> Surface for YawwGdiSurface<'thread, S> {
         let dc = Dc::from_raw(image.into_raw());
         if let Some(old_image) = self.residual().image_dcs.remove(&dc) {
             let bitmap = dc.select_object(self.thread, old_image)?.wait()?;
-            let _ = bitmap.delete_gdi(self.thread)?;
-            let _ = dc.delete_dc(self.thread)?;
+            let _ = bitmap.delete(self.thread)?;
+            let _ = dc.delete(self.thread)?;
         }
 
         Ok(())
@@ -653,11 +659,11 @@ impl<'thread, S: SendsDirective> Surface for YawwGdiSurface<'thread, S> {
 
         let t = src.bit_blt(
             self.thread,
-            self.dc,
             src_x,
             src_y,
-            width,
-            height,
+            width as _,
+            height as _,
+            self.dc,
             dst_x,
             dst_y,
             BitBltOp::SrcCopy,

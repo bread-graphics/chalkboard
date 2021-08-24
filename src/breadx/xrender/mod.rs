@@ -764,14 +764,6 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
         // slow path: convert every rectangle to two triangles and then composite it
         let rects: Vec<Rect<f32>> = rects
             .into_iter()
-            .filter(
-                |Rect {
-                     size: Size { width, height, .. },
-                     ..
-                 }| {
-                    !(approx::abs_diff_eq!(*width, 0.0) || approx::abs_diff_eq!(*height, 0.0))
-                },
-            )
             .collect();
         if rects.is_empty() {
             return Ok(());
@@ -822,7 +814,16 @@ impl<'dpy, Dpy: Display + ?Sized> RenderBreadxSurface<'dpy, Dpy> {
             .unwrap();
 
         let triangles: Vec<Triangle> = rects
-            .into_iter()
+            .iter()
+            .filter(
+                |Rect {
+                     size: Size { width, height, .. },
+                     ..
+                 }| {
+                    !(approx::abs_diff_eq!(*width, 0.0) || approx::abs_diff_eq!(*height, 0.0))
+                },
+            )
+            .copied()
             .flat_map(
                 |Rect {
                      origin: Point { x, y, .. },

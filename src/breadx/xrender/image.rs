@@ -147,7 +147,7 @@ fn fill_pixels<Dpy: Display + ?Sized>(
             red: 0,
             green: 0,
             blue: 0,
-            alpha: (alpha as u16) << 16,
+            alpha: (alpha as u16) << 8,
         },
         locations
             .into_iter()
