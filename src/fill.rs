@@ -1,13 +1,20 @@
 // MIT/Apache2 License
 
-use crate::{gradient::Gradient, Color};
+use super::{Color, Gradient};
 use lyon_geom::Angle;
+use std::borrow::Cow;
 
-/// Defines how a particular space is filled.
+/// The strategy to use when filling a space.
+///
+/// A shape can be filled either wth a solid color or using a gradient.
 #[derive(Debug, Clone, PartialEq)]
-pub enum FillRule {
-    SolidColor(Color),
-    LinearGradient(Gradient<'static>, Angle<f32>),
-    RadialGradient(Gradient<'static>),
-    ConicalGradient(Gradient<'static>),
+pub enum FillRule<'a> {
+    /// Solid color fill.
+    Solid(Color),
+    /// Linear gradient fill.
+    Linear(Cow<'a, Gradient>, Angle<f32>),
+    /// Radial gradient fill.
+    Radial(Cow<'a, Gradient>),
+    /// Conical gradient fill.
+    Conical(Cow<'a, Gradient>),
 }

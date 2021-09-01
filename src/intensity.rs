@@ -1,85 +1,115 @@
 // MIT/Apache2 License
 
-use core::ops;
 use num_traits::{AsPrimitive, Bounded};
 use ordered_float::NotNan;
+use std::ops::Sub;
 
-/// A popular concept in is a range that goes from zero to one, defining intensity of a color or the
-/// stop of a color in a `gradient. This type is essentially a wrapper around an `f32`, but with two invariants:
+/// The intensity of a given phenomenon, given as a certain percentage.
 ///
-/// * The inner value will always be between `0.0` and `1.0`.
-/// * The inner value will never be `NaN`.
+/// It is useful to have a metric of saying "on a scale from `x` to `y`, how much of `z` is something?` For
+/// instance, "how red is this color?" In this case, `Intensity` struct represents a floating point value
+/// between `0.0` and `1.0`, where `0.0` is no red and `1.0` is as red as it can get. This is useful in other
+/// cases as well; for instance, where the stops in a color gradient are.
+///
+/// The contained `f32` has two invariants:
+///
+/// * It cannot be `NaN`.
+/// * It must be in the range `0.0..=1.0`.
+///
+/// Since constructing an `Intensity` is `unsafe` unless these two invariants are known to be settled, these
+/// invariants can be relied on in unsafe code.
+///
+/// # Clamping
+///
+/// Let's take the colors again. It is common for colors to be representing using a byte per channel, where
+/// `0` is the least red something can get and `255` is the most red. Note that these would be equal to `0.0`
+/// and `1.0` in terms of the `Intensity` struct. Thus, it is often useful to convert this scale of `Intensity`
+/// to the scale of actual numbers.
+///
+/// Using the `clamp` method, this dream can become reality. `clamp` takes a generic parameter: the type whose
+/// limits you want the `Intensity` to clamp to. This type must implement the following traits:
+///
+/// * [`Bounded`]
+/// * [`Into<f32>`]
+/// * [`Sub`]
+///
+/// In addition, `f32` must also implement [`AsPrimitive<T>`].
+///
+/// [`AsPrimitive<T>`]: https://docs.rs/num-traits/*/num_traits/cast/trait.AsPrimitive.html
+/// [`Bounded`]: https://docs.rs/num-traits/*/num_traits/bounds/trait.Bounded.html
+/// [`Into<f32>`]: https://doc.rust-lang.org/1.54.0/std/convert/trait.Into.html
+/// [`Sub`]: https://doc.rust-lang.org/1.54.0/std/ops/trait.Sub.html
+///
+/// ## Example
+///
+/// ```rust
+/// use chalkboard::Intensity;
+///
+/// let lo = Intensity::new(0.0).unwrap();
+/// let hi = Intensity::new(1.0).unwrap();
+/// let middle = Intensity::new(0.5).unwrap();
+/// assert_eq!(lo.clamp::<u8>(), 0);
+/// assert_eq!(hi.clamp::<u8>(), 255);
+///
+/// let mc = middle.clamp::<u8>();
+/// assert!(mc == 127 || mc = 128);
+/// ```
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 #[repr(transparent)]
 pub struct Intensity {
-    inner: NotNan<f32>,
+    value: NotNan<f32>,
 }
 
 impl Intensity {
-    /// Create a new `Intensity`, without checking the inner value.
+    /// Creates a new `Intensity` from an `f32` without checking the value.
     ///
     /// # Safety
     ///
-    /// Behavior is undefined if `inner` is not a number, or outside of the range [0, 1].
-    #[allow(unused_unsafe)]
-    #[must_use]
+    /// If `value` is not between `0.0` and `1.0` inclusive, or if `value` is `NaN`, the results of this
+    /// function are undefined.
     #[inline]
-    pub const unsafe fn new_unchecked(inner: f32) -> Intensity {
+    pub unsafe fn new_unchecked(value: f32) -> Intensity {
         Intensity {
-            inner: unsafe { NotNan::new_unchecked(inner) },
+            value: unsafe { NotNan::new_unchecked(value) },
         }
     }
 
-    /// Create a new `Intensity`. If the inner value does not meet the invariants mentioned above, this function
-    /// returns `None`.
-    #[must_use]
+    /// Creates a new `Intensity` from an `f32`.
+    ///
+    /// If `value` is not between `0.0` and `1.0` inclusive, or if `value` is `NaN`, this function will
+    /// return `None`.
     #[inline]
-    pub fn new(inner: f32) -> Option<Intensity> {
-        if inner.is_nan() || inner < 0.0 || inner > 1.0 {
-            None
+    pub fn new(value: f32) -> Option<Intensity> {
+        if ((0.0..=1.0).contains(&value)
+            || approx::abs_diff_eq!(value, 1.0)
+            || approx::abs_diff_eq!(value, 0.0))
+            && !value.is_nan()
+        {
+            // SAFETY: invariants have been satisfied
+            Some(unsafe { Intensity::new_unchecked(value) })
         } else {
-            Some(Intensity {
-                inner: unsafe { NotNan::new_unchecked(inner) },
-            })
+            None
         }
     }
 
-    /// Get the inner value of the `Intensity`.
-    #[must_use]
+    /// Gets the inner value.
     #[inline]
     pub fn into_inner(self) -> f32 {
-        self.inner.into_inner()
+        self.value.into_inner()
     }
 
-    /// Clamp this value to a compatible integer value.
-    #[must_use]
+    /// Clamp this intensity to a value.
+    ///
+    /// This represents the `Intensity` as a value between `T::MIN` and `T::MAX`. See the struct-level
+    /// documentation for more information.
     #[inline]
-    pub fn clamp<N: Bounded + Copy + ops::Sub + 'static>(self) -> N
+    pub fn clamp<T: 'static + Bounded + Copy + Sub>(self) -> T
     where
-        f32: AsPrimitive<N> + From<N::Output>,
+        f32: AsPrimitive<T> + From<T::Output>,
     {
-        let bounds: f32 = (N::max_value() - N::min_value()).into();
-        (bounds * self.into_inner()).as_()
-    }
-
-    /// Clamp this value to a `u8`.
-    #[must_use]
-    #[inline]
-    pub fn clamp_u8(self) -> u8 {
-        self.clamp()
-    }
-
-    /// Clamp this value to a `u16`.
-    #[must_use]
-    #[inline]
-    pub fn clamp_u16(self) -> u16 {
-        self.clamp()
-    }
-}
-
-impl From<Intensity> for f32 {
-    #[inline]
-    fn from(i: Intensity) -> f32 {
-        i.into_inner()
+        let scale = T::max_value() - T::min_value();
+        let scale: f32 = scale.into();
+        let value = self.into_inner() * scale;
+        value.as_()
     }
 }

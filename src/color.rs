@@ -1,87 +1,70 @@
 // MIT/Apache2 License
 
 use super::Intensity;
+use num_traits::{AsPrimitive, Bounded};
+use std::ops::Sub;
 
-/// A four-element color.
-#[derive(Debug, Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// Represents a four-channel RGBA color.
+///
+/// Things tend to have colors. You know this. `Color` aims to be a standard way of representing these colors
+/// throughout the ecosystem. Insert your own XKCD 927 reference here.
+///
+/// `Color` is represented internally as a collection of four [`Intensity`] objects. This allows it to be
+/// clamped similarly to how `Intensity` is. `Intensity` is represented as a non-`NaN` float between `0.0`
+/// and `1.0`. The massive range that floating point values have allows this struct to theoretically represent
+/// a similarly massive array of colors.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct Color {
-    r: Intensity,
-    g: Intensity,
-    b: Intensity,
-    a: Intensity,
+    pub red: Intensity,
+    pub green: Intensity,
+    pub blue: Intensity,
+    pub alpha: Intensity,
 }
 
 impl Color {
-    pub const WHITE: Color = unsafe { Color::new_unchecked(1.0, 1.0, 1.0, 1.0) };
-    pub const BLACK: Color = unsafe { Color::new_unchecked(0.0, 0.0, 0.0, 1.0) };
-
-    /// Create a new color.
+    /// Creates a new color from four floats representing channels, without checking for validity.
     ///
     /// # Safety
     ///
-    /// Behavior is undefined if any of the elements are NaN.
+    /// If any of the components are `NaN` or not in the range `0.0..=1.0`, behavior is undefined.
     #[inline]
-    pub const unsafe fn new_unchecked(r: f32, g: f32, b: f32, a: f32) -> Self {
-        Self {
-            r: Intensity::new_unchecked(r),
-            g: Intensity::new_unchecked(g),
-            b: Intensity::new_unchecked(b),
-            a: Intensity::new_unchecked(a),
+    pub unsafe fn new_unchecked(red: f32, green: f32, blue: f32, alpha: f32) -> Color {
+        unsafe {
+            Color {
+                red: Intensity::new_unchecked(red),
+                green: Intensity::new_unchecked(green),
+                blue: Intensity::new_unchecked(blue),
+                alpha: Intensity::new_unchecked(alpha),
+            }
         }
     }
 
-    /// Creates a new color. This function returns `None` if any of the elements are NaN.
+    /// Creates a new color from four floats representing channels.
+    ///
+    /// If any of the components are `NaN` or not in the range `0.0..=1.0`, this function returns `None`.
     #[inline]
-    pub fn new(r: f32, g: f32, b: f32, a: f32) -> Option<Self> {
-        Some(Self {
-            r: Intensity::new(r)?,
-            g: Intensity::new(g)?,
-            b: Intensity::new(b)?,
-            a: Intensity::new(a)?,
+    pub fn new(red: f32, green: f32, blue: f32, alpha: f32) -> Option<Color> {
+        Some(Color {
+            red: Intensity::new(red)?,
+            green: Intensity::new(green)?,
+            blue: Intensity::new(blue)?,
+            alpha: Intensity::new(alpha)?,
         })
     }
 
-    /// Gets the red element.
+    /// Clamps the components of this color into an array of four channels.
+    ///
+    /// See the `clamp` method on [`Intensity`] for more information on how clamping works.
     #[inline]
-    pub fn red(self) -> f32 {
-        self.r.into_inner()
-    }
-
-    /// Gets the green element.
-    #[inline]
-    pub fn green(self) -> f32 {
-        self.g.into_inner()
-    }
-
-    /// Gets the blue element.
-    #[inline]
-    pub fn blue(self) -> f32 {
-        self.b.into_inner()
-    }
-
-    /// Gets the alpha element.
-    #[inline]
-    pub fn alpha(self) -> f32 {
-        self.a.into_inner()
-    }
-
-    /// Clamp to u8's.
-    #[inline]
-    pub fn clamp_u8(self) -> (u8, u8, u8, u8) {
-        let r = self.r.clamp_u8();
-        let g = self.g.clamp_u8();
-        let b = self.b.clamp_u8();
-        let a = self.a.clamp_u8();
-        (r, g, b, a)
-    }
-
-    /// Clamp to u16's.
-    #[inline]
-    pub fn clamp_u16(self) -> (u16, u16, u16, u16) {
-        let r: u16 = self.r.clamp_u16();
-        let g: u16 = self.g.clamp_u16();
-        let b: u16 = self.b.clamp_u16();
-        let a: u16 = self.a.clamp_u16();
-        (r, g, b, a)
+    pub fn clamp<T: 'static + Bounded + Copy + Sub>(self) -> [T; 4]
+    where
+        f32: AsPrimitive<T> + From<T::Output>,
+    {
+        [
+            self.red.clamp(),
+            self.green.clamp(),
+            self.blue.clamp(),
+            self.alpha.clamp(),
+        ]
     }
 }

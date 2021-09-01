@@ -1,123 +1,161 @@
 // MIT/Apache2 License
 
-use crate::{Color, Intensity};
+use super::{Color, Intensity};
 use std::{
-    borrow::Cow,
-    cmp::Ordering,
+    borrow::ToOwned,
     iter::FromIterator,
-    slice::{Iter as SliceIter, IterMut as SliceIterMut},
+    mem,
+    slice::{Iter, IterMut},
 };
-use tinyvec::{TinyVec, TinyVecIterator};
 
-const EXPECTED_CSTOPS: usize = 3;
-
-/// A gradient of colors.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Gradient<'a> {
-    // invariant: contains at least 1 element
-    colors: Cow<'a, [ColorStop]>,
+/// A gradient, representing a series of [`ColorStop`]s.
+///
+/// `Gradient`s can be held via either a reference or a `Box`. They cannot be owned by default.
+///
+/// `Gradient`s must have at least one element. Unsafe code can rely on this invariant.
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(transparent)]
+pub struct Gradient {
+    stops: [ColorStop],
 }
 
-impl<'a> Gradient<'a> {
-    /// Convert a `Cow<'_, [ColorStop]`>` into a gradient.
+impl Gradient {
+    /// Create a new reference `Gradient` from a slice of [`ColorStop`]s without checking for emptiness.
     ///
     /// # Safety
     ///
-    /// Behavior is undefined if the `Cow` contains no elements, or if the elements in the `Cow` are not sorted
-    /// by their `position` field.
+    /// If the slice is empty, behavior is undefined.
     #[inline]
-    pub unsafe fn new_unchecked(colors: Cow<'a, [ColorStop]>) -> Gradient<'a> {
-        Gradient { colors }
+    pub unsafe fn from_slice_unchecked<'a>(sl: &'a [ColorStop]) -> &'a Gradient {
+        // SAFETY: &'a [ColorStop] has the same layout as &'a Gradient
+        unsafe { mem::transmute::<_, &'a Gradient>(sl) }
     }
 
-    /// Creates a new gradient from an item that can be converted into a `Cow<'_, [ColorStop]>`. If the item is
-    /// empty, this returns `None`. Note that the elements are sorted before the `Gradient` is returned.
+    /// Create a new mutable reference `Gradient` from a slice of [`ColorStop`]s without checking for
+    /// emptiness.
+    ///
+    /// # Safety
+    ///
+    /// If the slice is empty, behavior is undefined.
     #[inline]
-    pub fn new<Colors: Into<Cow<'a, [ColorStop]>>>(colors: Colors) -> Option<Gradient<'a>> {
-        let mut colors = colors.into();
-        if colors.is_empty() || !is_sorted(&colors) {
+    pub unsafe fn from_slice_mut_unchecked<'a>(sl: &'a mut [ColorStop]) -> &'a mut Gradient {
+        // SAFETY: &'a mut [ColorStop] has the same layout at &'a mut Gradient
+        unsafe { mem::transmute::<_, &'a mut Gradient>(sl) }
+    }
+
+    /// Create a new reference to a `Gradient` from a slice of [`ColorStop`]s.
+    ///
+    /// If the slice is empty, this function returns `None`.
+    #[inline]
+    pub fn from_slice<'a>(sl: &'a [ColorStop]) -> Option<&'a Gradient> {
+        if sl.is_empty() {
             None
         } else {
-            Some(Gradient { colors })
+            // SAFETY: invariant is fulfilled
+            Some(unsafe { Gradient::from_slice_unchecked(sl) })
         }
     }
 
-    /// Creates an iterator over these values.
+    /// Create a new mutable reference to a `Gradient` from a slice of [`ColorStop`]s.
+    ///
+    /// If the slice is empty, this function returns `None`.
     #[inline]
-    pub fn iter(&self) -> SliceIter<'_, ColorStop> {
-        self.colors.iter()
-    }
-
-    /// Creates a mutable iterator over these values.
-    #[inline]
-    pub fn iter_mut(&mut self) -> SliceIterMut<'_, ColorStop> {
-        self.colors.to_mut().iter_mut()
-    }
-
-    /// Get a slice reference to the color stop values.
-    #[inline]
-    pub fn as_slice(&self) -> &[ColorStop] {
-        &*self.colors
-    }
-
-    /// Get the inner `Cow<'_, [ColorStop]>` out of the `Gradient`.
-    #[inline]
-    pub fn into_inner(self) -> Cow<'a, [ColorStop]> {
-        self.colors
-    }
-
-    /// Convert this `Gradient<'_>` to a `Gradient<'static>`. This requires copying if the `Gradient` is
-    /// borrowed.
-    #[inline]
-    pub fn into_owned(self) -> Gradient<'static> {
-        match self.colors {
-            Cow::Borrowed(colors) => Gradient {
-                colors: Cow::Owned(colors.to_vec()),
-            },
-            Cow::Owned(colors) => Gradient {
-                colors: Cow::Owned(colors),
-            },
+    pub fn from_slice_mut<'a>(sl: &'a mut [ColorStop]) -> Option<&'a mut Gradient> {
+        if sl.is_empty() {
+            None
+        } else {
+            // SAFETY: invariant is fulfilled
+            Some(unsafe { Gradient::from_slice_mut_unchecked(sl) })
         }
     }
 
-    /// Clone this `Gradient<'_>` into a `Gradient<'static>`.
+    /// Creates a new `Gradient` from a boxed slice of [`ColorStop`]s without checking for emptiness.
+    ///
+    /// # Safety
+    ///
+    /// If the slice is empty, behavior is undefined.
     #[inline]
-    pub fn to_owned(&self) -> Gradient<'static> {
-        match self.colors {
-            Cow::Borrowed(ref colors) => Gradient {
-                colors: Cow::Owned(colors.to_vec()),
-            },
-            Cow::Owned(ref colors) => Gradient {
-                colors: Cow::Owned(colors.clone()),
-            },
+    pub unsafe fn from_boxed_slice_unchecked(sl: Box<[ColorStop]>) -> Box<Gradient> {
+        // SAFETY: same as above
+        unsafe { Box::from_raw(mem::transmute::<_, *mut Gradient>(Box::into_raw(sl))) }
+    }
+
+    /// Creates a new `Gradient` from a boxed slice of [`ColorStop`]s.
+    ///
+    /// If the slice is empty, this function returns `None`.
+    #[inline]
+    pub fn from_boxed_slice(sl: Box<[ColorStop]>) -> Option<Box<Gradient>> {
+        if sl.is_empty() {
+            None
+        } else {
+            // SAFETY: invariant is fulfilled
+            Some(unsafe { Gradient::from_boxed_slice_unchecked(sl) })
         }
+    }
+
+    /// Get the slice backing this `Gradient`.
+    #[inline]
+    pub fn as_slice<'a>(&'a self) -> &'a [ColorStop] {
+        // SAFETY: layout is the same
+        unsafe { mem::transmute::<_, &'a [ColorStop]>(self) }
+    }
+
+    /// Get the mutable slice backing this `Gradient`.
+    #[inline]
+    pub fn as_slice_mut<'a>(&'a mut self) -> &'a mut [ColorStop] {
+        // SAFETY: layout is the same
+        unsafe { mem::transmute::<_, &'a mut [ColorStop]>(self) }
+    }
+
+    /// Convert this `Gradient` back into a boxed slice.
+    #[inline]
+    pub fn into_boxed_slice(self: Box<Self>) -> Box<[ColorStop]> {
+        // SAFETY: layout is the same
+        unsafe { Box::from_raw(mem::transmute::<_, *mut [ColorStop]>(Box::into_raw(self))) }
     }
 }
 
-/// A color stop in a color gradient.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+impl ToOwned for Gradient {
+    type Owned = Box<Gradient>;
+
+    #[inline]
+    fn to_owned(&self) -> Box<Gradient> {
+        unsafe { Gradient::from_boxed_slice_unchecked(self.as_slice().into()) }
+    }
+}
+
+impl<'a> IntoIterator for &'a Gradient {
+    type Item = &'a ColorStop;
+    type IntoIter = Iter<'a, ColorStop>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.stops.iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a mut Gradient {
+    type Item = &'a mut ColorStop;
+    type IntoIter = IterMut<'a, ColorStop>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.stops.iter_mut()
+    }
+}
+
+impl FromIterator<ColorStop> for Box<Gradient> {
+    #[inline]
+    fn from_iter<I: IntoIterator<Item = ColorStop>>(i: I) -> Box<Gradient> {
+        Gradient::from_boxed_slice(i.into_iter().collect()).expect("Iterator was empty")
+    }
+}
+
+/// A color stop.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct ColorStop {
+    /// The color of this color stop.
     pub color: Color,
-    pub position: Intensity,
-}
-
-/// Tell if this is sorted.
-#[inline]
-fn is_sorted(stops: &[ColorStop]) -> bool {
-    // port of https://doc.rust-lang.org/src/core/iter/traits/iterator.rs.html#3349-3352
-
-    let mut iter = stops.iter();
-    let mut last = match iter.next() {
-        Some(last) => last,
-        None => return true,
-    };
-
-    iter.all(|curr| {
-        if let Ordering::Greater = last.position.cmp(&curr.position) {
-            return false;
-        }
-
-        last = curr;
-        true
-    })
+    /// Where the color stop is located in the gradient.
+    pub location: Intensity,
 }
