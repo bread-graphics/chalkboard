@@ -1,11 +1,2 @@
-[package]
-name = "chalkboard"
-version = "0.1.0"
-edition = "2018"
-
-[dependencies]
-approx = "0.5"
-lyon_geom = "0.17"
-lyon_path = "0.17"
-num-traits = "0.2"
-ordered-float = "2.7"
+[workspace]
+members = ["chalkboard", "chalkboard-geometry"]
