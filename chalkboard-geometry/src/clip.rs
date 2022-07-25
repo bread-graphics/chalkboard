@@ -4,7 +4,7 @@ use super::{PathBuffer, Region};
 
 /// The clipping region for a given operation.
 pub struct Clip {
-    // the clip is a union of the path (closed) and the region
+    // the clip is a combination of the path (closed) and the region
     path: PathBuffer,
     region: Region<f32>,
 }

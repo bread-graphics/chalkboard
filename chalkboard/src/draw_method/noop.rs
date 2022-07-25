@@ -1,10 +1,10 @@
 // BSL 1.0 License
 
-use crate::{Result, DrawOperation};
 use super::DrawMethod;
+use crate::{DrawOperation, Result};
 
 /// A `DrawMethod` that just returns errors or itself.
-/// 
+///
 /// All other `DrawMethod`'s chains terminate in this link.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct NoopDrawer;

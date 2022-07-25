@@ -1,6 +1,6 @@
 // BSL 1.0 License
 
-use crate::{Result, DrawOperation};
+use crate::{DrawOperation, Result};
 use core::any::Any;
 use genimage::{Format, Image};
 
@@ -14,10 +14,7 @@ pub trait Device {
     type SupportedFormats: IntoIterator<Item = Format>;
 
     /// Determine the formats supported by this device and its surface.
-    fn supported_formats(
-        &mut self,
-        surface: &mut Self::Surface,
-    ) -> Result<Self::SupportedFormats>;
+    fn supported_formats(&mut self, surface: &mut Self::Surface) -> Result<Self::SupportedFormats>;
 
     /// Initialize an image to a given size.
     fn initialize_image(
@@ -43,17 +40,10 @@ pub trait Device {
     ) -> Result<()>;
 
     /// Run a draw operation on a surface.
-    fn draw(
-        &mut self,
-        surface: &mut Self::Surface,
-        op: DrawOperation,
-    ) -> Result<()>;
+    fn draw(&mut self, surface: &mut Self::Surface, op: DrawOperation) -> Result<()>;
 
     /// Cast a given surface to see if it is our surface.
-    fn cast_our_surface<'a>(
-        &mut self,
-        surface: &'a mut dyn Any,
-    ) -> Option<&'a mut Self::Surface> {
+    fn cast_our_surface<'a>(&mut self, surface: &'a mut dyn Any) -> Option<&'a mut Self::Surface> {
         surface.downcast_mut()
     }
 }

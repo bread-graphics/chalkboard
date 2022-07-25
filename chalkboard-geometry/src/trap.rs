@@ -16,12 +16,7 @@ pub struct Trapezoid<T> {
 }
 
 impl<T> Trapezoid<T> {
-    pub fn new(
-        top: T,
-        bottom: T,
-        left: Line<T>,
-        right: Line<T>,
-    ) -> Self {
+    pub fn new(top: T, bottom: T, left: Line<T>, right: Line<T>) -> Self {
         Self {
             top,
             bottom,

@@ -14,10 +14,13 @@ mod device;
 pub use device::Device;
 
 mod draw_information;
-pub use draw_information::DrawOperation;
+pub use draw_information::{CompositeParameters, DrawOperation};
 
 pub mod draw_method;
 pub use draw_method::DrawMethod;
 
 mod error;
 pub use error::{Error, Result};
+
+mod pattern;
+pub use pattern::Pattern;

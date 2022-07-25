@@ -1,6 +1,6 @@
 // BSL 1.0 License
 
-use crate::{Result, DrawOperation};
+use crate::{DrawOperation, Result};
 
 mod noop;
 pub use noop::NoopDrawer;

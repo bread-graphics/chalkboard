@@ -4,7 +4,7 @@ use alloc::string::{String, ToString};
 use core::fmt;
 
 pub struct Error {
-    kind: Kind
+    kind: Kind,
 }
 
 enum Kind {
@@ -14,22 +14,20 @@ enum Kind {
 }
 
 #[derive(Debug, Copy, Clone)]
-pub(crate) enum InvalidInput {
-    
-}
+pub(crate) enum InvalidInput {}
 
 impl Error {
     /// Create a new error from an error-like type.
     pub fn from_display(f: impl fmt::Display) -> Self {
         Error {
-            kind: Kind::Display(f.to_string())
+            kind: Kind::Display(f.to_string()),
         }
     }
 
     /// Create a new unsupported error.
     pub fn unsupported() -> Self {
         Error {
-            kind: Kind::Unsupported
+            kind: Kind::Unsupported,
         }
     }
 
@@ -53,9 +51,7 @@ impl fmt::Debug for Error {
             }
         }
 
-        f.debug_tuple("Error")
-            .field(&KindFmt(&self.kind))
-            .finish()
+        f.debug_tuple("Error").field(&KindFmt(&self.kind)).finish()
     }
 }
 

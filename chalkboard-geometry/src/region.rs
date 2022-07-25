@@ -1,6 +1,6 @@
 // BSL 1.0 License
 
-use super::{Point2D, Box2D};
+use super::{Box2D, Point2D};
 use alloc::vec::Vec;
 use num_traits::Bounded;
 
@@ -15,7 +15,10 @@ pub struct Region<T> {
 
 impl<T: Bounded> Default for Region<T> {
     fn default() -> Self {
-        Self { bounds: default_bounds(), boxes: alloc::vec![] }
+        Self {
+            bounds: default_bounds(),
+            boxes: alloc::vec![],
+        }
     }
 }
 
@@ -74,13 +77,7 @@ impl<T: Copy> Region<T> {
 
 fn default_bounds<T: Bounded>() -> Box2D<T> {
     Box2D::new(
-        Point2D::new(
-        T::min_value(),
-        T::min_value(),
-        ),
-        Point2D::new(
-        T::max_value(),
-        T::max_value(),
-        )
+        Point2D::new(T::min_value(), T::min_value()),
+        Point2D::new(T::max_value(), T::max_value()),
     )
 }
