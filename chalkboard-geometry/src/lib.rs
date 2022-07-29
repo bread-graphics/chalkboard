@@ -45,10 +45,11 @@ pub use lyon_geom::{Arc, ArcFlags, Line, LineSegment, Scalar, Triangle};
 #[doc(inline)]
 pub use lyon_path::{
     builder::PathBuilder, Event as PathEvent, Path, PathBuffer, PathBufferSlice, PathSlice,
+    iterator::Flattened,
 };
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum FillRule {
     Winding,
-    EvenOdd
+    EvenOdd,
 }

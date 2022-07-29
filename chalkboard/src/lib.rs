@@ -23,4 +23,4 @@ mod error;
 pub use error::{Error, Result};
 
 mod pattern;
-pub use pattern::Pattern;
+pub use pattern::{Pattern, SpecializedPattern};

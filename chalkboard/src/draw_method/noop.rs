@@ -14,7 +14,9 @@ impl DrawMethod for NoopDrawer {
         self
     }
 
-    fn draw(&mut self, _: DrawOperation) -> Result<()> {
-        Err(crate::Error::unsupported())
+    fn draw(&mut self, _: &DrawOperation<'_>) -> Result<()> {
+        Err(crate::Error::from_display(
+            "Attempted to draw with a NoopDrawer",
+        ))
     }
 }

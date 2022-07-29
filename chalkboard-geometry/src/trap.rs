@@ -3,6 +3,7 @@
 use super::Line;
 
 /// A two-dimensional trapezoid.
+#[derive(Debug, Copy, Clone)]
 #[repr(C)]
 pub struct Trapezoid<T> {
     /// The upper limit of the trapezoid.
