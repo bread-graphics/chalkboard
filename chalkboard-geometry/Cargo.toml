@@ -9,5 +9,5 @@ edition = "2021"
 euclid = { version = "0.22.7", features = ["libm"], default-features = false }
 lyon_geom = { version = "1.0.0", default-features = false }
 lyon_path = { version = "1.0.0", default-features = false }
-num-traits = { version = "0.2.15", default-features = false }
+num-traits = { version = "0.2.15", default-features = false, features = ["libm"] }
 tinyvec = { version = "1.6.0", features = ["alloc"] }

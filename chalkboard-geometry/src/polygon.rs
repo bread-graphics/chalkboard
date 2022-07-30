@@ -1,8 +1,23 @@
-// BSL 1.0 License
+// This file is part of chalkboard.
+//
+// chalkboard is free software: you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation,
+// either version 3 of the License, or (at your option)
+// any later version.
+//
+// chalkboard is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty
+// of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+// See the GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General
+// Public License along with chalkboard. If not, see
+// <https://www.gnu.org/licenses/>.
 
-use super::{Line, Point2D, Scalar, PathEvent};
+use super::{Line, PathEvent, Point2D, Scalar};
 use alloc::vec::Vec;
-use lyon_path::{iterator::PathIterator, PathBufferSlice, PathBuffer, PathSlice, Path};
+use lyon_path::{iterator::PathIterator, Path, PathBuffer, PathBufferSlice, PathSlice};
 use num_traits::Zero;
 use tinyvec::TinyVec;
 
@@ -32,26 +47,16 @@ impl Polygon {
     }
 
     /// Collect from a path event iterator with a given tolerance.
-    pub fn from_iter_with_tolerance(
-        iter: impl IntoIterator<Item = Event>,
-        tolerance: f32,
-    ) -> Self {
-        iter.into_iter().flattened(tolerance)
+    pub fn from_iter_with_tolerance(iter: impl IntoIterator<Item = Event>, tolerance: f32) -> Self {
+        iter.into_iter()
+            .flattened(tolerance)
             .filter_map(|event| match event {
-                PathEvent::Begin { .. } => {
-                    None
-                },
-                PathEvent::Line { from, to } => {
-                    Some(Edge::new(from, to))
-                },
-                PathEvent::End { last, first, close } => {
-                    Some(Edge::new(last, first))
-                },
-                ev => unreachable!(
-                    "Flattened iterator should never yield {:?}",
-                    ev,
-                ),
-            }).collect()
+                PathEvent::Begin { .. } => None,
+                PathEvent::Line { from, to } => Some(Edge::new(from, to)),
+                PathEvent::End { last, first, close } => Some(Edge::new(last, first)),
+                ev => unreachable!("Flattened iterator should never yield {:?}", ev,),
+            })
+            .collect()
     }
 }
 
@@ -93,7 +98,7 @@ impl From<PathBuffer> for Polygon {
 
 impl<'a> From<PathSlice<'a>> for Polygon {
     fn from(ps: PathSlice<'a>) -> Self {
-        ps.iter().collect() 
+        ps.iter().collect()
     }
 }
 
