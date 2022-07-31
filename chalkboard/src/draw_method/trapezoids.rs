@@ -88,3 +88,7 @@ impl<'surf, Dev: TrapezoidDraw + ?Sized> DrawMethod for TrapezoidMethod<'surf, D
         todo!()
     }
 }
+
+impl<'surf, Dev: TrapezoidDraw + ?Sized> TrapezoidMethod<'surf, Dev> {
+    
+}

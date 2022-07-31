@@ -19,6 +19,20 @@
 //! backends and use cases.
 
 #![no_std]
+#![forbid(unsafe_code, rust_2018_idioms)]
+
+// Gates
+
+#[cfg(feature = "async")]
+macro_rules! cfg_async {
+    ($($item:item)*) => {$($item)*};
+}
+#[cfg(not(feature = "async"))]
+macro_rules! cfg_async {
+    ($($item:item)*) => {};
+}
+
+// Actual Content
 
 extern crate alloc;
 

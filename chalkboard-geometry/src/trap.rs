@@ -1,21 +1,10 @@
-// This file is part of chalkboard.
-//
-// chalkboard is free software: you can redistribute it and/or
-// modify it under the terms of the GNU Lesser General Public
-// License as published by the Free Software Foundation,
-// either version 3 of the License, or (at your option)
-// any later version.
-//
-// chalkboard is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty
-// of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-// See the GNU Lesser General Public License for more details.
-//
-// You should have received a copy of the GNU Lesser General
-// Public License along with chalkboard. If not, see
-// <https://www.gnu.org/licenses/>.
+//               Copyright John Nunley, 2022.
+// Distributed under the Boost Software License, Version 1.0.
+//       (See accompanying file LICENSE or copy at
+//         https://www.boost.org/LICENSE_1_0.txt)
 
-use core::{iter::FusedIterator, ops::Sub, ptr::eq};
+use core::{iter::FusedIterator, ops::Sub, convert::{TryFrom, TryInto}};
+use alloc::boxed::Box;
 use lyon_geom::Scalar;
 use num_traits::{Float, Zero};
 
@@ -166,3 +155,32 @@ impl<T> Trapezoid<T> {
         Self::new(top.y, bottom.y, left_line, right_line)
     }
 }
+
+impl<Num: Scalar> TryFrom<Trapezoid<Num>> for Box2D<Num> {
+    type Error = EdgesNotVertical<Num>;
+
+    fn try_from(value: Trapezoid<Num>) -> Result<Self, Self::Error> {
+        if approx_eq(value.left.vector.x, Num::zero()) &&
+            approx_eq(value.right.vector.x, Num::zero())
+        {
+            let min = Point2D::new(value.left.point.x, value.top);
+            let max = Point2D::new(value.right.point.x, value.bottom);
+
+            Ok(Box2D::new(min, max))
+        } else {
+            Err(EdgesNotVertical(value))
+        }
+    }
+}
+
+impl<Num: Scalar> TryFrom<Trapezoid<Num>> for Rect<Num> {
+    type Error = EdgesNotVertical<Num>;
+
+    fn try_from(value: Trapezoid<Num>) -> Result<Self, Self::Error> {
+        let box_: Box2D<Num> = value.try_into()?;
+        Ok(box_.to_rect())
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct EdgesNotVertical<Num>(pub Trapezoid<Num>);

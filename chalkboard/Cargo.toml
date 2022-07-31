@@ -1,8 +1,15 @@
 [package]
 name = "chalkboard"
 version = "0.1.0"
-edition = "2021"
+edition = "2018"
+authors = ["notgull <jtnunley01@gmail.com>"]
+description = "A flexible drawing API"
+license = "LGPL-3.0-or-later"
 
 [dependencies]
 genimage = { path = "../../genimage" }
 geometry = { package = "chalkboard-geometry", path = "../chalkboard-geometry" }
+
+[features]
+default = []
+async = []

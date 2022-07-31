@@ -64,11 +64,6 @@ impl<'a> Context<'a> {
             }
         }
     }
-
-    /// Flush any pending data to the underlying surface.
-    pub fn flush(&mut self) -> Result<()> {
-        self.draw_method().flush()
-    }
 }
 
 impl<'a, D: DrawMethod> From<&'a mut D> for Context<'a> {

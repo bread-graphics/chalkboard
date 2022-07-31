@@ -24,19 +24,19 @@ mod trapezoids;
 pub use trapezoids::TrapezoidMethod;
 
 /// The backing interface for drawing things.
+/// 
+/// # Blocking
+/// 
+/// None of these methods should actually block. In cases where an
+/// operation *would* block, it should be pushed into a queue or
+/// equivalent structure and then run when a "flush" or equivalent
+/// operation is invoked.
 pub trait DrawMethod {
     /// Get the inner `DrawMethod` backing this one.
     fn inner(&mut self) -> &mut dyn DrawMethod;
 
     /// Run a `DrawOperation`.
     fn draw(&mut self, op: &DrawOperation<'_>) -> Result<()>;
-
-    /// Flush any pending data to the underlying surface.
-    ///
-    /// By default, this function is a no-op.
-    fn flush(&mut self) -> Result<()> {
-        Ok(())
-    }
 }
 
 impl<D: DrawMethod + ?Sized> DrawMethod for &mut D {
@@ -46,9 +46,5 @@ impl<D: DrawMethod + ?Sized> DrawMethod for &mut D {
 
     fn draw(&mut self, op: &DrawOperation<'_>) -> Result<()> {
         D::draw(self, op)
-    }
-
-    fn flush(&mut self) -> Result<()> {
-        D::flush(self)
     }
 }

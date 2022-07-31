@@ -1,19 +1,11 @@
-// This file is part of chalkboard.
-//
-// chalkboard is free software: you can redistribute it and/or
-// modify it under the terms of the GNU Lesser General Public
-// License as published by the Free Software Foundation,
-// either version 3 of the License, or (at your option)
-// any later version.
-//
-// chalkboard is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty
-// of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-// See the GNU Lesser General Public License for more details.
-//
-// You should have received a copy of the GNU Lesser General
-// Public License along with chalkboard. If not, see
-// <https://www.gnu.org/licenses/>.
+//               Copyright John Nunley, 2022.
+// Distributed under the Boost Software License, Version 1.0.
+//       (See accompanying file LICENSE or copy at
+//         https://www.boost.org/LICENSE_1_0.txt)
+
+use core::iter::FromIterator;
+
+use crate::util::approx_eq;
 
 use super::{Line, PathEvent, Point2D, Scalar};
 use alloc::vec::Vec;
@@ -72,7 +64,9 @@ impl IntoIterator for Polygon {
 impl FromIterator<Edge<f32>> for Polygon {
     fn from_iter<T: IntoIterator<Item = Edge<f32>>>(iter: T) -> Self {
         Self {
-            edges: Vec::from_iter(iter),
+            edges: iter.into_iter().filter(|edge| {
+                !approx_eq(edge.line.vector.y, 0.0)
+            }).collect() 
         }
     }
 }
@@ -143,6 +137,25 @@ impl<Num: Scalar> Edge<Num> {
         }
     }
 
+    /// Get the two points for this edge.
+    pub fn points(self) -> (Point2D<Num>, Point2D<Num>) {
+        if approx_eq(self.line.vector.y, Num::zero()) {
+            panic!("horizontal line")
+        } else {
+            // calculate points
+            (
+                Point2D::new(
+                    self.line.equation().solve_x_for_y(self.top).unwrap(),
+                    self.top,
+                ),
+                Point2D::new(
+                    self.line.equation().solve_x_for_y(self.bottom).unwrap(),
+                    self.bottom,
+                ),
+            )
+        }
+    }
+
     /// Get the intersection of two edges, if any.
     pub fn intersection(&self, other: &Edge<Num>) -> Option<Point2D<Num>> {
         let inter = self.line.intersection(&other.line)?;
@@ -164,6 +177,13 @@ pub enum Direction {
     #[default]
     Forward,
     Backwards,
+}
+
+fn approx_eq_pt<Num: Scalar>(
+    a: &Point2D<f32>,
+    b: &Point2D<f32>,
+) -> bool {
+    approx_eq(a.x, b.x) && approx_eq(a.y, b.y)
 }
 
 #[cfg(test)]

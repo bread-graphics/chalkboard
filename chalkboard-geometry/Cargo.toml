@@ -1,7 +1,12 @@
 [package]
 name = "chalkboard-geometry"
 version = "0.1.0"
-edition = "2021"
+edition = "2018"
+license = "BSL-1.0"
+authors = ["notgull <jtnunley01@gmail.com>"]
+description = "Geometry primitives for use in chalkboard"
+homepage = "https://github.com/bread-graphics/chalkboard#readme"
+repository = "https://github.com/bread-graphics/chalkboard"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

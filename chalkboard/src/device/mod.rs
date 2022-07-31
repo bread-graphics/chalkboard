@@ -15,9 +15,10 @@
 // Public License along with chalkboard. If not, see
 // <https://www.gnu.org/licenses/>.
 
-use crate::{DrawMethod, DrawOperation, Result, SpecializedPattern};
+use crate::{DrawMethod, Result, SpecializedPattern};
+use alloc::boxed::Box;
 use core::any::Any;
-use genimage::{Format, Image};
+use geometry::Vector2D;
 
 mod boxes;
 mod composite;
@@ -26,21 +27,17 @@ mod trapezoids;
 
 pub use boxes::BoxDraw;
 pub use composite::CompositeDraw;
-use geometry::Vector2D;
 pub use image_map::ImageMapDraw;
 pub use trapezoids::TrapezoidDraw;
+
+cfg_async! {
+    use core::{pin::Pin, future::Future};
+}
 
 /// The device is used to provide functionality to surfaces.
 pub trait Device {
     /// The surface used to back this device.
     type Surface: Any;
-
-    /// Get a drawing method for a device and a corresponding surface.
-    fn draw_method<R>(
-        &mut self,
-        surface: &mut Self::Surface,
-        format: impl FnOnce(&mut dyn DrawMethod) -> Result<R>,
-    ) -> Result<R>;
 
     /// Cast a given surface to see if it is our surface.
     fn cast_our_surface<'a>(
@@ -53,6 +50,33 @@ pub trait Device {
         } else {
             Err(surface)
         }
+    }
+}
+
+/// A synchronous, blocking device.
+pub trait SyncDevice: Device {
+    /// Get a drawing method for a device and a corresponding surface.
+    fn draw_method<R>(
+        &mut self,
+        surface: &mut Self::Surface,
+        format: impl FnOnce(&mut dyn DrawMethod) -> Result<R>,
+    ) -> Result<R>;
+}
+
+cfg_async! {
+    /// An asynchronous, non-blocking device.
+    pub trait AsyncDevice: Device {
+        /// Get a drawing method for a device and a corresponding surface.
+        fn draw_method<
+            'future,
+            'device: 'future,
+            'surface: 'future,
+            R
+        >(
+            &'device mut self,
+            surface: &'surface mut Self::Surface,
+            format: impl FnOnce(&mut dyn DrawMethod) -> Result<R>,
+        ) -> Pin<Box<dyn Future<Output = Result<R>> + 'future>>;
     }
 }
 
@@ -74,6 +98,64 @@ impl<'surf, Dev: Device + ?Sized> From<SpecializedPattern<'surf, Dev>>
         PatternAndOrigin {
             pattern,
             origin: Vector2D::zero(),
+        }
+    }
+}
+
+// Trait implementations for sub-items
+impl<Dev: Device + ?Sized> Device for &mut Dev {
+    type Surface = Dev::Surface;
+}
+impl<Dev: Device + ?Sized> Device for Box<Dev> {
+    type Surface = Dev::Surface;
+}
+
+impl<Dev: SyncDevice + ?Sized> SyncDevice for &mut Dev {
+    fn draw_method<R>(
+        &mut self,
+        surface: &mut Self::Surface,
+        format: impl FnOnce(&mut dyn DrawMethod) -> Result<R>,
+    ) -> Result<R> {
+        (**self).draw_method(surface, format)
+    }
+}
+impl<Dev: SyncDevice + ?Sized> SyncDevice for Box<Dev> {
+    fn draw_method<R>(
+        &mut self,
+        surface: &mut Self::Surface,
+        format: impl FnOnce(&mut dyn DrawMethod) -> Result<R>,
+    ) -> Result<R> {
+        (**self).draw_method(surface, format)
+    }
+}
+
+cfg_async! {
+    impl<Dev: AsyncDevice + ?Sized> AsyncDevice for &mut Dev {
+        fn draw_method<
+            'future,
+            'device: 'future,
+            'surface: 'future,
+            R
+        >(
+            &'device mut self,
+            surface: &'surface mut Self::Surface,
+            format: impl FnOnce(&mut dyn DrawMethod) -> Result<R>,
+        ) -> Pin<Box<dyn Future<Output = Result<R>> + 'future>> {
+            (**self).draw_method(surface, format)
+        }
+    }
+    impl<Dev: AsyncDevice + ?Sized> AsyncDevice for Box<Dev> {
+        fn draw_method<
+            'future,
+            'device: 'future,
+            'surface: 'future,
+            R
+        >(
+            &'device mut self,
+            surface: &'surface mut Self::Surface,
+            format: impl FnOnce(&mut dyn DrawMethod) -> Result<R>,
+        ) -> Pin<Box<dyn Future<Output = Result<R>> + 'future>> {
+            (**self).draw_method(surface, format)
         }
     }
 }

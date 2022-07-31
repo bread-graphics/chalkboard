@@ -16,20 +16,20 @@
 // <https://www.gnu.org/licenses/>.
 
 use crate::Device;
-use core::{any::Any, result::Result};
+use core::{any::Any, fmt, result::Result};
 use genimage::{GeneralImage, Rgba};
 
 /// A pattern acts as a source or a mask in composition operations.
-pub enum Pattern<'surf> {
+pub enum Pattern<'surf, ImgStorage = &'surf mut [u8]> {
     /// A solid color.
     SolidColor(Rgba),
     /// Any pattern that may be represented as a `GeneralImage`.
-    GeneralImage(GeneralImage<&'surf mut [u8]>),
+    GeneralImage(GeneralImage<ImgStorage>),
     /// Use a surface as a source.
     ///
     /// This surface is assumed to belong to the `Device` that is
-    /// currently being drawn on. If it does not, the behavior
-    /// is undefined. If you would like to use a surface that does
+    /// currently being drawn on. If it does not, the API will raise
+    /// an error. If you would like to use a surface that does
     /// not belong to a `Device`, you should map it to an image and
     /// then use that image as a pattern.
     Surface(&'surf mut dyn Any),
@@ -58,5 +58,35 @@ impl<'surf> Pattern<'surf> {
                 Err(surface) => return Err(Pattern::Surface(surface)),
             },
         })
+    }
+}
+
+impl<'surf> fmt::Debug for Pattern<'surf> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        struct Surface;
+
+        impl fmt::Debug for Surface {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("<abstract surface>")
+            }
+        }
+
+        match self {
+            Pattern::SolidColor(color) => {
+                f.debug_tuple("SolidColor")
+                    .field(color)
+                    .finish()
+            },
+            Pattern::GeneralImage(image) => {
+                f.debug_tuple("GeneralImage")
+                    .field(image)
+                    .finish()
+            },
+            Pattern::Surface(surf) => {
+                f.debug_tuple("Surface")
+                    .field(surf)
+                    .finish()
+            }
+        }
     }
 }

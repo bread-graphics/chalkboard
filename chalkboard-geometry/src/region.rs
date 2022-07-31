@@ -1,19 +1,9 @@
-// This file is part of chalkboard.
-//
-// chalkboard is free software: you can redistribute it and/or
-// modify it under the terms of the GNU Lesser General Public
-// License as published by the Free Software Foundation,
-// either version 3 of the License, or (at your option)
-// any later version.
-//
-// chalkboard is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty
-// of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-// See the GNU Lesser General Public License for more details.
-//
-// You should have received a copy of the GNU Lesser General
-// Public License along with chalkboard. If not, see
-// <https://www.gnu.org/licenses/>.
+//               Copyright John Nunley, 2022.
+// Distributed under the Boost Software License, Version 1.0.
+//       (See accompanying file LICENSE or copy at
+//         https://www.boost.org/LICENSE_1_0.txt)
+
+use core::iter::FromIterator;
 
 use super::{Box2D, Point2D};
 use alloc::vec::Vec;
@@ -47,30 +37,17 @@ impl<T: Bounded + Copy + Ord> FromIterator<Box2D<T>> for Region<T> {
 
 impl<T: Copy + Ord> Extend<Box2D<T>> for Region<T> {
     fn extend<I: IntoIterator<Item = Box2D<T>>>(&mut self, iter: I) {
-        for box_ in iter {
-            self.add(box_);
-        }
+        let bounds = &mut self.bounds;
+        let boxes = &mut self.boxes;
+
+        boxes.extend(iter.into_iter().inspect(|box_| add_to_bounds(bounds, box_)));
     }
 }
 
 impl<T: Copy + Ord> Region<T> {
     /// Add new bounds to accomodate a box.
     fn accomodate(&mut self, box_: Box2D<T>) {
-        if box_.min.x < self.bounds.min.x {
-            self.bounds.min.x = box_.min.x;
-        }
-
-        if box_.min.y < self.bounds.min.y {
-            self.bounds.min.y = box_.min.y;
-        }
-
-        if box_.max.x > self.bounds.max.x {
-            self.bounds.max.x = box_.max.x;
-        }
-
-        if box_.max.y > self.bounds.max.y {
-            self.bounds.max.y = box_.max.y;
-        }
+        add_to_bounds(&mut self.bounds, &box_)
     }
 
     /// Add a new `Box2D` to the region.
@@ -95,4 +72,22 @@ fn default_bounds<T: Bounded>() -> Box2D<T> {
         Point2D::new(T::min_value(), T::min_value()),
         Point2D::new(T::max_value(), T::max_value()),
     )
+}
+
+fn add_to_bounds<T: Clone + PartialOrd>(bounds: &mut Box2D<T>, new: &Box2D<T>) {
+    if new.min.x < bounds.min.x {
+        bounds.min.x = new.min.x.clone();
+    }
+
+    if new.min.y < bounds.min.y {
+        bounds.min.y = new.min.y.clone();
+    }
+
+    if new.max.x > bounds.max.x {
+        bounds.max.x = new.max.x.clone();
+    }
+
+    if new.max.y > bounds.max.y {
+        bounds.max.y = new.max.y.clone();
+    }
 }
